@@ -1,14 +1,11 @@
 """
-OLIVIA 4.0 - ULTRA HUMAINE
+OLIVIA 5.0 - AGENT PARFAIT
 ==========================
-Comportement indiscernable d'un humain:
-- Temps de réponse variables et réalistes
-- Typing indicator avec durée calculée
-- Réactions aux messages (👍, ❤️, etc.)
-- Messages courts et naturels
-- Parfois plusieurs messages au lieu d'un long
-- Présence (online/offline)
-- Erreurs de frappe simulées (optionnel)
+- Attente 2-3 minutes avant réponse (humain occupé)
+- Mémoire complète et persistante
+- Fiches clients Slack
+- Pas de liens direct - qualifier d'abord
+- Flux ultra réaliste
 """
 
 import os
@@ -27,309 +24,381 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 import uvicorn
 
-app = FastAPI(
-    title="Olivia 4.0 - Ultra Humaine",
-    description="Agent conversationnel indiscernable d'un humain",
-    version="4.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="Olivia 5.0", version="5.0.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # ============================================
 # Configuration
 # ============================================
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODEL = os.getenv("MODEL", "moonshotai/kimi-k2.5")
-
-# WAHA
 WAHA_API_URL = os.getenv("WAHA_API_URL", "")
 WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
+SLACK_WEBHOOK = os.getenv("SLACK_WEBHOOK", "")
+SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "C05R37D3LRM")
 
 # Mémoire
 DATA_DIR = Path("/tmp/olivia_data")
 DATA_DIR.mkdir(exist_ok=True)
-CONVERSATIONS_DIR = DATA_DIR / "conversations"
-CONVERSATIONS_DIR.mkdir(exist_ok=True)
+CLIENTS_DIR = DATA_DIR / "clients"
+CLIENTS_DIR.mkdir(exist_ok=True)
 
 # ============================================
-# COMPORTEMENT HUMAIN - Configuration
+# TIMING HUMAIN - 2-3 MINUTES !
 # ============================================
-HUMAN_CONFIG = {
-    # Délai avant de lire le message (secondes)
-    "read_delay_min": 1.5,
-    "read_delay_max": 8.0,
+TIMING = {
+    # Délai INITIAL avant toute action (humain occupé)
+    "initial_wait_min": 90,   # 1.5 minutes minimum
+    "initial_wait_max": 180,  # 3 minutes maximum
     
-    # Délai de réflexion après lecture (secondes)
-    "think_delay_min": 2.0,
-    "think_delay_max": 6.0,
+    # Délai après seen, avant de commencer à taper
+    "after_seen_min": 30,     # 30 secondes
+    "after_seen_max": 90,     # 1.5 minutes
     
-    # Vitesse de frappe (caractères par seconde)
-    "typing_speed_min": 25,  # Frappe lente
-    "typing_speed_max": 50,  # Frappe rapide
+    # Vitesse de frappe (lente pour être réaliste)
+    "typing_speed": 20,       # 20 caractères/seconde (lent)
     
-    # Délai entre l'arrêt de frappe et l'envoi
-    "send_delay_min": 0.3,
-    "send_delay_max": 1.2,
+    # Délai avant envoi final
+    "before_send_min": 2,
+    "before_send_max": 5,
     
-    # Probabilité de réagir au message (0-1)
-    "reaction_probability": 0.15,
-    
-    # Probabilité de diviser un long message
-    "split_message_probability": 0.4,
-    
-    # Longueur max avant de considérer un message comme "long"
-    "long_message_threshold": 300,
-    
-    # Réactions possibles avec leurs probabilités
-    "reactions": {
-        "👍": 0.3,
-        "😊": 0.25,
-        "🌴": 0.2,
-        "❤️": 0.15,
-        "🙏": 0.1,
-    }
+    # Pause entre messages multiples
+    "between_messages_min": 15,
+    "between_messages_max": 45,
 }
 
 # ============================================
-# BASE DE CONNAISSANCES
+# BASE DE CONNAISSANCES (sans liens directs)
 # ============================================
-KNOWLEDGE_BASE = """
-## 🌴 PHI PHI PARADISE TRAVEL
+KNOWLEDGE = """
+## PHI PHI PARADISE TRAVEL
 
-### INFOS AGENCE
-- Site: https://phiphiparadisetravel.com
+### AGENCE
+- Site: phiphiparadisetravel.com
 - WhatsApp TH: +66 99 11 58 304
 - WhatsApp FR: +33 7 85 65 40 82
-- Email: phiphiparadis@gmail.com
 - Licence TAT: 33/10549
 
 ### POLITIQUE
-✅ Aucun acompte requis
+✅ Aucun acompte
 ✅ Guides francophones
-✅ Petits groupes (max 10-12)
+✅ Petits groupes (10-12 max)
 ✅ Transfert hôtel inclus
-👶 Enfants 3-9 ans: -50%
-👶 Enfants -3 ans: GRATUIT
+👶 -9 ans: -50% | -3 ans: gratuit
 
----
+### EXCURSIONS PHI PHI
+- Matin Maya: ฿800 (lever soleil Maya Bay)
+- Magique Turquoise: ฿700
+- Bateau Pirate Phoenix: ฿1,800 (familles)
+- Bateau Pirate Dragon: ฿1,800 (festif sunset)
+- Long Tail Privé: ฿4,200 (6h)
 
-## EXCURSIONS PHI PHI
+### PLONGÉE PHI PHI
+- Baptême: ฿4,000 (tout inclus)
+- Fun Dive: ฿3,300
+- Open Water PADI: ฿13,700
 
-### ⭐ Matin Maya - ฿800/pers
-- 6h30-11h30 (5h)
-- Maya Bay au lever du soleil (avant la foule!)
-- Pileh Lagoon, Viking Cave, Monkey Beach
-- 🔗 MyRezz: https://booking.myrezapp.com/fr/online/booking/step1/16686/100673
-- 🌐 Site: https://phiphiparadisetravel.com/excursion/matin-maya
+### KRABI
+- Hong Island Sunset BBQ: ฿2,500 (planctons!)
+- 4 Islands Sunset: ฿2,500
+- James Bond Island: ฿2,500
+- Éléphants + Cascades: ฿3,000
 
-### Magique Turquoise - ฿700/pers
-- Pileh Lagoon, Viking Cave, Loh Samah
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/98661
+### PHUKET
+- Phi Phi Sunrise Premium: ฿3,500
+- Similan Islands: ฿2,000
 
-### Bateau Pirate Phoenix - ฿1,800/pers
-- 9h30-15h30 (6h) - Ambiance calme, familles
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
+### BANGKOK
+- Temples (Grand Palace): demi-journée
+- Ayutthaya: journée
+- Marchés flottants: matinée
 
-### Bateau Pirate Dragon - ฿1,800/pers
-- 11h30-19h00 - Ambiance festive, sunset
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
-
-### Long Tail Privé - ฿4,200/bateau (6h)
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71403
-
----
-
-## PLONGÉE PHI PHI
-
-### Baptême - ฿3,400 + ฿600 parc
-- 2 plongées 50min, instructeur francophone
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71911
-
-### Fun Dive - ฿2,700 + ฿600 parc
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71667
-
-### Open Water PADI - ฿12,900 + ฿800
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71669
-
----
-
-## EXCURSIONS KRABI
-
-### ⭐ Hong Island Sunset BBQ - ฿2,500/pers
-- 11h-20h - Lagon secret, planctons bioluminescents!
-- 🌐 https://phiphiparadisetravel.com/excursion/hong-island-sunset
-
-### 4 Islands Sunset BBQ - ฿2,500/pers
-- Tup Island, Chicken Island, Poda
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86354
-
-### James Bond Island - ฿2,500/pers
-- Canoë mangroves, village flottant
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/84187
-
-### 🐘 Éléphants + Cascades - ฿3,000/pers
-- 3h avec éléphants + Parc National Bencha
-- 🌐 https://phiphiparadisetravel.com/excursion/elephant-sanctuary
-
-### Seul au Monde - ฿2,500/pers
-- Koh Yao Yai, île sauvage secrète
-
----
-
-## EXCURSIONS PHUKET
-
-### Phi Phi Sunrise Premium - ฿3,500/pers
-- Maya Bay au lever du soleil, max 15 pers
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/84448
-
-### Similan Islands - ฿2,000/pers
-- Meilleur snorkeling de Thaïlande
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/84442
-
----
-
-## BANGKOK
-
-### Temples (Grand Palace, Wat Pho)
-- Guide FR: https://booking.myrezapp.com/fr/online/booking/step1/16686/86582
-
-### Ayutthaya
-- Guide FR: https://booking.myrezapp.com/fr/online/booking/step1/16686/86588
-
-### Marchés flottants
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86552
-
----
-
-## CHIANG MAI
-
-### Éléphants - ฿1,500/pers
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86591
-
-### Temples Chiang Rai - ฿1,900/pers
-- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86592
-
----
-
-## FERRIES
-- Phi Phi → Phuket: ฿1,100
-- Phi Phi → Krabi: ฿1,100
-
----
-
-## RECOMMANDATIONS
-- **Familles**: Bateau Phoenix, Éléphants
-- **Couples**: Matin Maya, Hong Island Sunset
-- **Fêtards**: Bateau Dragon
-- **Aventuriers**: Plongée, Temple du Tigre
-- **Budget**: Matin Maya (฿800), Magique Turquoise (฿700)
+### RECOMMANDATIONS
+- Familles → Bateau Phoenix, Éléphants
+- Couples → Matin Maya, Hong Island Sunset
+- Fêtards → Bateau Dragon
+- Budget → Matin Maya (฿800)
 """
 
 # ============================================
-# Mémoire persistante
+# MÉMOIRE CLIENT COMPLÈTE
 # ============================================
-def get_hash(phone: str) -> str:
-    return hashlib.md5(phone.encode()).hexdigest()[:12]
+def get_client_file(phone: str) -> Path:
+    h = hashlib.md5(phone.encode()).hexdigest()[:12]
+    return CLIENTS_DIR / f"{h}.json"
 
-def get_conv_file(phone: str) -> Path:
-    return CONVERSATIONS_DIR / f"{get_hash(phone)}.json"
-
-def load_conv(phone: str) -> dict:
-    f = get_conv_file(phone)
+def load_client(phone: str) -> dict:
+    f = get_client_file(phone)
     if f.exists():
         return json.loads(f.read_text())
     return {
         "phone": phone,
-        "hash": get_hash(phone),
+        "phone_hash": hashlib.md5(phone.encode()).hexdigest()[:12],
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        
+        # Infos client
+        "prenom": None,
+        "langue": None,  # fr ou en
+        "localisation": None,  # phi phi, krabi, phuket, bangkok
+        "dates_voyage": None,
+        "nb_personnes": None,
+        "type_groupe": None,  # famille, couple, amis, solo
+        "budget": None,  # petit, moyen, premium
+        "interets": [],  # plongée, nature, fête, culture, etc.
+        
+        # État commercial
+        "statut": "nouveau",  # nouveau, qualifié, intéressé, prêt_réserver, réservé
+        "excursions_interessees": [],
+        "excursions_recommandees": [],
+        "lien_envoye": False,
+        
+        # Historique complet
         "messages": [],
-        "client": {},
-        "first": datetime.now().isoformat(),
-        "last": datetime.now().isoformat(),
-        "interests": [],
-        "count": 0
+        "total_messages": 0,
+        "derniere_interaction": None,
+        
+        # Notes
+        "notes": [],
+        "slack_notified": False
     }
 
-def save_conv(phone: str, conv: dict):
-    get_conv_file(phone).write_text(json.dumps(conv, ensure_ascii=False, indent=2))
+def save_client(phone: str, client: dict):
+    client["updated_at"] = datetime.now().isoformat()
+    get_client_file(phone).write_text(json.dumps(client, ensure_ascii=False, indent=2))
 
-def add_msg(phone: str, role: str, text: str):
-    conv = load_conv(phone)
-    conv["messages"].append({"role": role, "text": text, "ts": datetime.now().isoformat()})
-    if len(conv["messages"]) > 30:
-        conv["messages"] = conv["messages"][-30:]
-    conv["last"] = datetime.now().isoformat()
-    conv["count"] += 1
-    save_conv(phone, conv)
-    return conv
+def add_message(phone: str, role: str, content: str) -> dict:
+    client = load_client(phone)
+    client["messages"].append({
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now().isoformat()
+    })
+    # Garder TOUT l'historique (pas de limite)
+    client["total_messages"] += 1
+    client["derniere_interaction"] = datetime.now().isoformat()
+    
+    # Détecter la langue
+    if not client["langue"]:
+        fr_words = ["bonjour", "salut", "merci", "excursion", "combien", "je", "nous", "prix"]
+        en_words = ["hello", "hi", "thanks", "trip", "how much", "i", "we", "price"]
+        content_lower = content.lower()
+        fr_count = sum(1 for w in fr_words if w in content_lower)
+        en_count = sum(1 for w in en_words if w in content_lower)
+        if fr_count > en_count:
+            client["langue"] = "fr"
+        elif en_count > fr_count:
+            client["langue"] = "en"
+    
+    save_client(phone, client)
+    return client
 
-def get_context(phone: str) -> str:
-    conv = load_conv(phone)
-    ctx = ""
-    if conv["client"]:
-        ctx += "\n## CLIENT:\n" + "\n".join(f"- {k}: {v}" for k, v in conv["client"].items())
-    if conv["interests"]:
-        ctx += f"\n## INTÉRÊTS: {', '.join(conv['interests'])}"
-    if conv["messages"]:
-        ctx += "\n## HISTORIQUE:\n"
-        for m in conv["messages"][-6:]:
-            who = "Client" if m["role"] == "user" else "Olivia"
-            ctx += f"{who}: {m['text'][:100]}...\n" if len(m['text']) > 100 else f"{who}: {m['text']}\n"
+def extract_client_info(phone: str, message: str):
+    """Extrait et sauvegarde les infos du message"""
+    client = load_client(phone)
+    msg = message.lower()
+    
+    # Prénom
+    if not client["prenom"]:
+        patterns = [
+            r"je m'appelle\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)",
+            r"my name is\s+([A-Za-z]+)",
+            r"moi c'est\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)",
+            r"i'm\s+([A-Za-z]+)",
+            r"c'est\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)\s+[!.,]",
+        ]
+        for p in patterns:
+            m = re.search(p, message, re.I)
+            if m:
+                client["prenom"] = m.group(1).title()
+                break
+    
+    # Localisation
+    if not client["localisation"]:
+        lieux = {
+            "phi phi": "Phi Phi",
+            "krabi": "Krabi",
+            "ao nang": "Ao Nang",
+            "phuket": "Phuket",
+            "bangkok": "Bangkok",
+            "chiang mai": "Chiang Mai",
+            "lanta": "Koh Lanta"
+        }
+        for key, val in lieux.items():
+            if key in msg:
+                client["localisation"] = val
+                break
+    
+    # Nombre de personnes
+    if not client["nb_personnes"]:
+        m = re.search(r"(\d+)\s*(?:personnes?|pers|people|pax|adultes?|nous sommes)", msg)
+        if m:
+            client["nb_personnes"] = int(m.group(1))
+    
+    # Type de groupe
+    if not client["type_groupe"]:
+        if any(w in msg for w in ["famille", "family", "enfant", "kid", "bébé", "baby"]):
+            client["type_groupe"] = "famille"
+        elif any(w in msg for w in ["couple", "amoureux", "honeymoon", "lune de miel", "romantique"]):
+            client["type_groupe"] = "couple"
+        elif any(w in msg for w in ["amis", "friends", "groupe", "group"]):
+            client["type_groupe"] = "amis"
+        elif any(w in msg for w in ["seul", "solo", "alone"]):
+            client["type_groupe"] = "solo"
+    
+    # Intérêts
+    interets_map = {
+        "plongée": ["plongée", "plonger", "diving", "scuba", "snorkeling"],
+        "nature": ["nature", "éléphant", "elephant", "jungle", "cascade", "waterfall"],
+        "fête": ["fête", "party", "festif", "ambiance", "bar", "alcool"],
+        "culture": ["temple", "culture", "histoire", "history", "buddha"],
+        "aventure": ["aventure", "adventure", "kayak", "escalade"],
+        "détente": ["détente", "relax", "tranquille", "calme", "peaceful"],
+        "photo": ["photo", "instagram", "sunset", "coucher de soleil", "lever du soleil"]
+    }
+    for interet, keywords in interets_map.items():
+        if any(kw in msg for kw in keywords) and interet not in client["interets"]:
+            client["interets"].append(interet)
+    
+    # Dates
+    if not client["dates_voyage"]:
+        # Format DD/MM ou DD-MM
+        m = re.search(r"(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?)", message)
+        if m:
+            client["dates_voyage"] = m.group(1)
+        # Mois
+        mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", 
+                "août", "septembre", "octobre", "novembre", "décembre",
+                "january", "february", "march", "april", "may", "june", 
+                "july", "august", "september", "october", "november", "december"]
+        for m in mois:
+            if m in msg:
+                client["dates_voyage"] = m.capitalize()
+                break
+    
+    # Mettre à jour le statut
+    if client["statut"] == "nouveau" and (client["prenom"] or client["localisation"] or client["nb_personnes"]):
+        client["statut"] = "qualifié"
+    
+    if any(w in msg for w in ["intéressé", "interested", "réserver", "book", "combien", "prix", "price", "how much"]):
+        client["statut"] = "intéressé"
+    
+    save_client(phone, client)
+    return client
+
+def get_client_context(phone: str) -> str:
+    """Génère le contexte COMPLET pour l'IA"""
+    client = load_client(phone)
+    
+    ctx = "\n## FICHE CLIENT:\n"
+    ctx += f"- Téléphone: {phone}\n"
+    ctx += f"- Statut: {client['statut']}\n"
+    
+    if client["prenom"]:
+        ctx += f"- Prénom: {client['prenom']}\n"
+    if client["langue"]:
+        ctx += f"- Langue: {client['langue']}\n"
+    if client["localisation"]:
+        ctx += f"- Localisation: {client['localisation']}\n"
+    if client["dates_voyage"]:
+        ctx += f"- Dates voyage: {client['dates_voyage']}\n"
+    if client["nb_personnes"]:
+        ctx += f"- Nombre personnes: {client['nb_personnes']}\n"
+    if client["type_groupe"]:
+        ctx += f"- Type groupe: {client['type_groupe']}\n"
+    if client["interets"]:
+        ctx += f"- Intérêts: {', '.join(client['interets'])}\n"
+    if client["excursions_recommandees"]:
+        ctx += f"- Excursions déjà recommandées: {', '.join(client['excursions_recommandees'])}\n"
+    if client["lien_envoye"]:
+        ctx += f"- Lien réservation déjà envoyé: OUI\n"
+    
+    ctx += f"\n## HISTORIQUE COMPLET ({len(client['messages'])} messages):\n"
+    for msg in client["messages"][-15:]:  # 15 derniers pour le contexte
+        who = "Client" if msg["role"] == "user" else "Olivia"
+        ts = msg["timestamp"][:16].replace("T", " ")
+        ctx += f"[{ts}] {who}: {msg['content']}\n"
+    
     return ctx
 
 # ============================================
-# Extraction d'infos
+# SLACK - Fiches clients
 # ============================================
-def extract_info(text: str) -> dict:
-    info = {}
-    t = text.lower()
+async def send_slack_notification(client: dict, message_type: str = "new"):
+    """Envoie une notification Slack"""
+    if not SLACK_WEBHOOK:
+        print("SLACK_WEBHOOK non configuré")
+        return
     
-    # Prénom
-    m = re.search(r"(?:je m'appelle|my name is|moi c'est|i'm)\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)", text, re.I)
-    if m: info["prenom"] = m.group(1).title()
+    if message_type == "new":
+        emoji = "🆕"
+        title = "Nouveau client WhatsApp"
+    elif message_type == "update":
+        emoji = "📝"
+        title = "Mise à jour client"
+    elif message_type == "hot":
+        emoji = "🔥"
+        title = "Client CHAUD - Prêt à réserver!"
+    else:
+        emoji = "💬"
+        title = "Activité client"
     
-    # Personnes
-    m = re.search(r"(\d+)\s*(?:personnes?|pers|people|adultes?)", t)
-    if m: info["personnes"] = m.group(1)
+    # Construire le message Slack
+    fields = []
     
-    # Lieu
-    for lieu in ["phi phi", "krabi", "ao nang", "phuket", "bangkok", "chiang mai", "lanta"]:
-        if lieu in t:
-            info["lieu"] = lieu.title()
-            break
+    if client.get("prenom"):
+        fields.append({"title": "Prénom", "value": client["prenom"], "short": True})
     
-    # Intérêts
-    interests = []
-    kw = {
-        "plongée": ["plongée", "plonger", "diving", "scuba"],
-        "famille": ["famille", "enfant", "kid", "family"],
-        "couple": ["couple", "romantique", "honeymoon"],
-        "fête": ["fête", "party", "festif", "ambiance"],
-        "nature": ["nature", "éléphant", "jungle", "tranquille"],
+    fields.append({"title": "Téléphone", "value": client["phone"][:15] + "...", "short": True})
+    fields.append({"title": "Statut", "value": client["statut"].upper(), "short": True})
+    
+    if client.get("localisation"):
+        fields.append({"title": "Localisation", "value": client["localisation"], "short": True})
+    if client.get("nb_personnes"):
+        fields.append({"title": "Personnes", "value": str(client["nb_personnes"]), "short": True})
+    if client.get("type_groupe"):
+        fields.append({"title": "Type", "value": client["type_groupe"], "short": True})
+    if client.get("dates_voyage"):
+        fields.append({"title": "Dates", "value": client["dates_voyage"], "short": True})
+    if client.get("interets"):
+        fields.append({"title": "Intérêts", "value": ", ".join(client["interets"]), "short": False})
+    
+    # Dernier message
+    if client.get("messages"):
+        last_msg = client["messages"][-1]
+        if last_msg["role"] == "user":
+            fields.append({"title": "Dernier message", "value": last_msg["content"][:200], "short": False})
+    
+    payload = {
+        "channel": SLACK_CHANNEL,
+        "username": "Olivia Bot",
+        "icon_emoji": ":palm_tree:",
+        "attachments": [{
+            "color": "#36a64f" if message_type == "new" else "#ff9900" if message_type == "hot" else "#439FE0",
+            "pretext": f"{emoji} {title}",
+            "fields": fields,
+            "footer": "Phi Phi Paradise Travel",
+            "ts": int(datetime.now().timestamp())
+        }]
     }
-    for cat, words in kw.items():
-        if any(w in t for w in words):
-            interests.append(cat)
     
-    return info, interests
+    try:
+        async with httpx.AsyncClient() as http:
+            await http.post(SLACK_WEBHOOK, json=payload, timeout=10)
+            print(f"📤 Slack notifié: {message_type}")
+    except Exception as e:
+        print(f"Slack error: {e}")
 
 # ============================================
-# WAHA - Fonctions humaines
+# WAHA - Ultra humain
 # ============================================
 async def waha_call(endpoint: str, data: dict):
-    """Appel générique WAHA"""
     if not WAHA_API_KEY:
         return None
     try:
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
+        async with httpx.AsyncClient() as http:
+            r = await http.post(
                 f"{WAHA_API_URL}/api/{endpoint}",
                 headers={"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"},
                 json={"session": WAHA_SESSION, **data},
@@ -337,135 +406,72 @@ async def waha_call(endpoint: str, data: dict):
             )
             return r
     except Exception as e:
-        print(f"WAHA {endpoint} error: {e}")
+        print(f"WAHA {endpoint}: {e}")
         return None
 
 async def waha_seen(chat_id: str):
-    """Marquer comme lu (double tick bleu)"""
     await waha_call("sendSeen", {"chatId": chat_id})
 
 async def waha_typing_start(chat_id: str):
-    """Commencer à taper"""
     await waha_call("startTyping", {"chatId": chat_id})
 
 async def waha_typing_stop(chat_id: str):
-    """Arrêter de taper"""
     await waha_call("stopTyping", {"chatId": chat_id})
 
-async def waha_react(chat_id: str, message_id: str, emoji: str):
-    """Réagir à un message"""
-    await waha_call("reaction", {"chatId": chat_id, "messageId": message_id, "reaction": emoji})
-
 async def waha_send(chat_id: str, text: str):
-    """Envoyer un message"""
     r = await waha_call("sendText", {"chatId": chat_id, "text": text})
     return r and r.status_code in [200, 201]
 
-def calc_typing_time(text: str) -> float:
-    """Calcule temps de frappe réaliste"""
-    chars = len(text)
-    speed = random.uniform(HUMAN_CONFIG["typing_speed_min"], HUMAN_CONFIG["typing_speed_max"])
-    base = chars / speed
-    # Ajouter variation humaine (hésitations, corrections)
-    variation = random.uniform(0.8, 1.4)
-    result = base * variation
-    # Min 2s, max 20s
-    return max(2.0, min(result, 20.0))
-
-def should_react() -> bool:
-    """Décide si on réagit au message"""
-    return random.random() < HUMAN_CONFIG["reaction_probability"]
-
-def pick_reaction() -> str:
-    """Choisit une réaction aléatoire pondérée"""
-    reactions = HUMAN_CONFIG["reactions"]
-    items = list(reactions.items())
-    total = sum(p for _, p in items)
-    r = random.uniform(0, total)
-    cumsum = 0
-    for emoji, prob in items:
-        cumsum += prob
-        if r <= cumsum:
-            return emoji
-    return "👍"
-
-def split_message(text: str) -> List[str]:
-    """Divise un long message en plusieurs courts"""
-    if len(text) < HUMAN_CONFIG["long_message_threshold"]:
-        return [text]
-    
-    if random.random() > HUMAN_CONFIG["split_message_probability"]:
-        return [text]
-    
-    # Diviser par phrases ou paragraphes
-    parts = []
-    
-    # Essayer de diviser par double saut de ligne
-    paragraphs = text.split("\n\n")
-    if len(paragraphs) > 1:
-        current = ""
-        for p in paragraphs:
-            if len(current) + len(p) < 250:
-                current += ("\n\n" if current else "") + p
-            else:
-                if current:
-                    parts.append(current.strip())
-                current = p
-        if current:
-            parts.append(current.strip())
-        return parts if len(parts) > 1 else [text]
-    
-    # Sinon diviser par phrases
-    sentences = re.split(r'(?<=[.!?])\s+', text)
-    current = ""
-    for s in sentences:
-        if len(current) + len(s) < 200:
-            current += (" " if current else "") + s
-        else:
-            if current:
-                parts.append(current.strip())
-            current = s
-    if current:
-        parts.append(current.strip())
-    
-    return parts if len(parts) > 1 else [text]
+async def waha_react(chat_id: str, msg_id: str, emoji: str):
+    await waha_call("reaction", {"chatId": chat_id, "messageId": msg_id, "reaction": emoji})
 
 # ============================================
-# IA - NVIDIA
+# IA - Prompt intelligent
 # ============================================
 SYSTEM_PROMPT = f"""Tu es Olivia, assistante de Phi Phi Paradise Travel.
 
 ## PERSONNALITÉ
-- Chaleureuse, naturelle, HUMAINE
-- Bilingue FR/EN
-- Passionnée de Thaïlande
-- Tu AIDES, pas juste vendre
+- Chaleureuse, naturelle, patiente
+- Tu parles comme une vraie personne
+- Bilingue FR/EN (adapte-toi)
+- Tu QUALIFIES le client avant de proposer
 
-## STYLE WHATSAPP
-- Messages COURTS (150 caractères idéal, 250 max)
-- Conversationnel et naturel
-- 1-2 emojis max par message
+## RÈGLES IMPORTANTES
+
+### NE PAS ENVOYER DE LIEN DIRECT !
+- D'abord, apprends à connaître le client
+- Pose des questions pour qualifier (lieu, dates, personnes, intérêts)
+- Recommande des excursions adaptées
+- N'envoie le lien que quand le client dit clairement "je veux réserver" ou "envoie-moi le lien"
+
+### QUALIFICATION (dans l'ordre)
+1. Où est-il/elle ? (Phi Phi, Krabi, Phuket, Bangkok?)
+2. Quand ? (dates)
+3. Combien de personnes ?
+4. Type de groupe ? (famille, couple, amis?)
+5. Qu'est-ce qui les intéresse ? (plongée, nature, fête?)
+
+### STYLE WHATSAPP
+- Messages COURTS (100-150 caractères max)
+- Naturel et conversationnel
+- 1 emoji max par message
 - UNE question à la fois
-- Pas de listes à puces dans les réponses courtes
+- Réponds à CE qu'ils demandent, pas plus
 
-## LIENS
-- Donne le lien MyRezz quand le client est intéressé
-- Mentionne aussi le site phiphiparadisetravel.com
-- Format simple: "Réserve ici: [lien]"
+### QUAND LE CLIENT EST QUALIFIÉ
+- Recommande 1-2 excursions MAX adaptées
+- Donne le prix en Baht (฿)
+- Si intéressé, propose d'envoyer le lien
 
-## INFOS À COLLECTER (subtilement)
-- Prénom
-- Dates voyage
-- Lieu séjour
-- Intérêts
-- Nombre personnes
+### QUAND ENVOYER LE LIEN
+- UNIQUEMENT si le client dit: "je veux réserver", "envoie le lien", "comment réserver?"
+- Utilise: booking.myrezapp.com/fr/online/booking/step1/16686/[ID]
+- IDs: Matin Maya=100673, Pirate=71115, Hong Island=86352, Baptême=71911
 
-## PRIX EN BAHT (฿)
+### SI TU NE SAIS PAS
+- Propose de contacter Jiji au +66 99 11 58 304
 
-## SI PAS SÛR
-→ Contacte +66 99 11 58 304
-
-{KNOWLEDGE_BASE}
+{KNOWLEDGE}
 """
 
 def call_ai(messages: list) -> str:
@@ -473,7 +479,7 @@ def call_ai(messages: list) -> str:
         raise Exception("NVIDIA_API_KEY manquante")
     
     r = requests.post(
-        NVIDIA_API_URL,
+        "https://integrate.api.nvidia.com/v1/chat/completions",
         headers={
             "Authorization": f"Bearer {NVIDIA_API_KEY}",
             "Accept": "text/event-stream",
@@ -482,8 +488,8 @@ def call_ai(messages: list) -> str:
         json={
             "model": MODEL,
             "messages": messages,
-            "max_tokens": 512,  # Réduit pour réponses plus courtes
-            "temperature": 0.85,
+            "max_tokens": 256,  # Court !
+            "temperature": 0.8,
             "top_p": 0.9,
             "stream": True,
             "chat_template_kwargs": {"thinking": True}
@@ -491,9 +497,6 @@ def call_ai(messages: list) -> str:
         stream=True,
         timeout=120
     )
-    
-    if r.status_code != 200:
-        raise Exception(f"API Error: {r.text}")
     
     content = ""
     for line in r.iter_lines():
@@ -505,159 +508,132 @@ def call_ai(messages: list) -> str:
                     content += chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                 except:
                     pass
-    return content
+    return content.strip()
 
 # ============================================
-# Traitement message - ULTRA HUMAIN
+# TRAITEMENT MESSAGE - ULTRA LENT ET HUMAIN
 # ============================================
-async def process_human(chat_id: str, message: str, message_id: str = None):
-    """Traite un message avec comportement ultra humain"""
+async def process_message(chat_id: str, message: str, msg_id: str = None):
+    """Traite un message avec timing TRÈS humain (2-3 min)"""
     try:
-        # ═══════════════════════════════════════
-        # PHASE 1: LECTURE (humain lit le message)
-        # ═══════════════════════════════════════
-        read_delay = random.uniform(
-            HUMAN_CONFIG["read_delay_min"],
-            HUMAN_CONFIG["read_delay_max"]
-        )
-        # Messages longs = plus de temps pour lire
-        if len(message) > 100:
-            read_delay *= 1.3
+        print(f"📩 [{chat_id[:12]}...] Message reçu, attente longue...")
         
-        await asyncio.sleep(read_delay)
+        # ═══════════════════════════════════════════════════
+        # PHASE 1: ATTENTE INITIALE LONGUE (2-3 MINUTES)
+        # Simule un humain occupé qui ne répond pas tout de suite
+        # ═══════════════════════════════════════════════════
+        initial_wait = random.uniform(TIMING["initial_wait_min"], TIMING["initial_wait_max"])
+        print(f"⏳ Attente initiale: {initial_wait:.0f}s ({initial_wait/60:.1f} min)")
+        await asyncio.sleep(initial_wait)
+        
+        # ═══════════════════════════════════════════════════
+        # PHASE 2: MARQUER COMME LU
+        # ═══════════════════════════════════════════════════
         await waha_seen(chat_id)
+        print(f"✓✓ Message vu")
         
-        # ═══════════════════════════════════════
-        # PHASE 2: RÉACTION (optionnel)
-        # ═══════════════════════════════════════
-        if message_id and should_react():
-            # Petit délai avant de réagir
-            await asyncio.sleep(random.uniform(0.5, 2.0))
-            emoji = pick_reaction()
-            await waha_react(chat_id, message_id, emoji)
-            print(f"😊 Réaction: {emoji}")
+        # ═══════════════════════════════════════════════════
+        # PHASE 3: PAUSE APRÈS LECTURE (réflexion)
+        # ═══════════════════════════════════════════════════
+        after_seen = random.uniform(TIMING["after_seen_min"], TIMING["after_seen_max"])
+        print(f"🤔 Réflexion: {after_seen:.0f}s")
+        await asyncio.sleep(after_seen)
         
-        # ═══════════════════════════════════════
-        # PHASE 3: RÉFLEXION (humain réfléchit)
-        # ═══════════════════════════════════════
-        think_delay = random.uniform(
-            HUMAN_CONFIG["think_delay_min"],
-            HUMAN_CONFIG["think_delay_max"]
-        )
-        await asyncio.sleep(think_delay)
+        # ═══════════════════════════════════════════════════
+        # PHASE 4: SAUVEGARDER & EXTRAIRE INFOS
+        # ═══════════════════════════════════════════════════
+        add_message(chat_id, "user", message)
+        client = extract_client_info(chat_id, message)
         
-        # ═══════════════════════════════════════
-        # PHASE 4: SAUVEGARDE & EXTRACTION
-        # ═══════════════════════════════════════
-        add_msg(chat_id, "user", message)
+        # Notification Slack si nouveau client ou client chaud
+        if not client.get("slack_notified"):
+            await send_slack_notification(client, "new")
+            client["slack_notified"] = True
+            save_client(chat_id, client)
+        elif client["statut"] == "intéressé":
+            await send_slack_notification(client, "hot")
         
-        info, interests = extract_info(message)
-        if info:
-            conv = load_conv(chat_id)
-            conv["client"].update(info)
-            save_conv(chat_id, conv)
-        if interests:
-            conv = load_conv(chat_id)
-            conv["interests"] = list(set(conv.get("interests", []) + interests))
-            save_conv(chat_id, conv)
-        
-        # ═══════════════════════════════════════
-        # PHASE 5: GÉNÉRATION RÉPONSE IA
-        # ═══════════════════════════════════════
-        context = get_context(chat_id)
+        # ═══════════════════════════════════════════════════
+        # PHASE 5: GÉNÉRER RÉPONSE IA
+        # ═══════════════════════════════════════════════════
+        context = get_client_context(chat_id)
         ai_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE:\n{context}"},
+            {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE CLIENT ACTUEL:\n{context}"},
             {"role": "user", "content": message}
         ]
         
-        # Commencer à taper PENDANT que l'IA génère
+        # Start typing AVANT l'appel IA
         await waha_typing_start(chat_id)
+        print(f"⌨️ Typing started...")
         
-        try:
-            ai_response = call_ai(ai_messages)
-        finally:
-            pass  # On arrête le typing après
+        response = call_ai(ai_messages)
         
-        # ═══════════════════════════════════════
-        # PHASE 6: ENVOI HUMAIN
-        # ═══════════════════════════════════════
-        # Diviser en plusieurs messages si long
-        messages_to_send = split_message(ai_response)
+        # ═══════════════════════════════════════════════════
+        # PHASE 6: SIMULER LA FRAPPE
+        # ═══════════════════════════════════════════════════
+        typing_time = len(response) / TIMING["typing_speed"]
+        # Ajouter variation humaine
+        typing_time *= random.uniform(0.9, 1.3)
+        typing_time = max(3, min(typing_time, 30))  # Entre 3 et 30 sec
         
-        for i, msg_part in enumerate(messages_to_send):
-            # Calculer temps de frappe
-            typing_time = calc_typing_time(msg_part)
-            
-            # Si ce n'est pas le premier message, recommencer à taper
-            if i > 0:
-                await waha_typing_start(chat_id)
-            
-            # Simuler la frappe
-            await asyncio.sleep(typing_time)
-            
-            # Arrêter de taper
-            await waha_typing_stop(chat_id)
-            
-            # Petit délai avant envoi (humain relit)
-            send_delay = random.uniform(
-                HUMAN_CONFIG["send_delay_min"],
-                HUMAN_CONFIG["send_delay_max"]
-            )
-            await asyncio.sleep(send_delay)
-            
-            # Envoyer
-            await waha_send(chat_id, msg_part)
-            
-            # Si plusieurs messages, pause entre eux
-            if i < len(messages_to_send) - 1:
-                await asyncio.sleep(random.uniform(1.0, 3.0))
+        print(f"⌨️ Frappe simulée: {typing_time:.0f}s")
+        await asyncio.sleep(typing_time)
         
-        # Sauvegarder la réponse complète
-        add_msg(chat_id, "assistant", ai_response)
+        await waha_typing_stop(chat_id)
         
-        total_time = read_delay + think_delay + sum(calc_typing_time(m) for m in messages_to_send)
-        print(f"✅ [{chat_id[:12]}...] {len(messages_to_send)} msg(s), ~{total_time:.1f}s")
+        # ═══════════════════════════════════════════════════
+        # PHASE 7: PAUSE FINALE (relecture)
+        # ═══════════════════════════════════════════════════
+        before_send = random.uniform(TIMING["before_send_min"], TIMING["before_send_max"])
+        await asyncio.sleep(before_send)
+        
+        # ═══════════════════════════════════════════════════
+        # PHASE 8: ENVOYER
+        # ═══════════════════════════════════════════════════
+        await waha_send(chat_id, response)
+        add_message(chat_id, "assistant", response)
+        
+        total_time = initial_wait + after_seen + typing_time + before_send
+        print(f"✅ [{chat_id[:12]}...] Répondu en {total_time/60:.1f} min")
         
     except Exception as e:
         print(f"❌ Erreur: {e}")
         await waha_typing_stop(chat_id)
-        await waha_send(chat_id, "Oups, petit bug! 😅 Écris-moi au +66 99 11 58 304")
+        await waha_send(chat_id, "Désolée, petit souci technique! Contacte Jiji au +66 99 11 58 304 🙏")
 
 # ============================================
-# Routes API
+# ROUTES API
 # ============================================
 @app.get("/")
 async def root():
-    convs = list(CONVERSATIONS_DIR.glob("*.json"))
+    clients = list(CLIENTS_DIR.glob("*.json"))
     return {
-        "name": "Olivia 4.0 - Ultra Humaine",
-        "version": "4.0",
+        "name": "Olivia 5.0 - Agent Parfait",
+        "version": "5.0",
         "status": "online",
         "model": MODEL,
         "features": [
-            "human_timing",
-            "typing_indicator", 
-            "reactions",
-            "message_splitting",
-            "persistent_memory",
-            "smart_extraction"
+            "ultra_slow_response (2-3 min)",
+            "complete_memory",
+            "slack_notifications",
+            "client_qualification",
+            "no_direct_links"
         ],
         "whatsapp": "connected" if WAHA_API_KEY else "not configured",
-        "conversations": len(convs),
-        "config": {
-            "read_delay": f"{HUMAN_CONFIG['read_delay_min']}-{HUMAN_CONFIG['read_delay_max']}s",
-            "typing_speed": f"{HUMAN_CONFIG['typing_speed_min']}-{HUMAN_CONFIG['typing_speed_max']} char/s",
-            "reaction_prob": f"{HUMAN_CONFIG['reaction_probability']*100}%"
+        "slack": "configured" if SLACK_WEBHOOK else "not configured",
+        "clients": len(clients),
+        "timing": {
+            "initial_wait": f"{TIMING['initial_wait_min']}-{TIMING['initial_wait_max']}s",
+            "after_seen": f"{TIMING['after_seen_min']}-{TIMING['after_seen_max']}s"
         }
     }
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model": MODEL}
+    return {"status": "healthy"}
 
 @app.post("/webhook/waha")
 async def webhook(request: Request, background_tasks: BackgroundTasks):
-    """Webhook WAHA ultra humain"""
     try:
         body = await request.json()
         
@@ -665,57 +641,58 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
             payload = body.get("payload", {})
             
             if payload.get("fromMe"):
-                return {"status": "ignored", "reason": "self"}
+                return {"status": "ignored"}
             
             chat_id = payload.get("from", "")
             message = payload.get("body", "")
             msg_type = payload.get("type", "")
-            msg_id = payload.get("id", {}).get("id") if isinstance(payload.get("id"), dict) else payload.get("id")
+            msg_id = payload.get("id", "")
             
             if msg_type == "chat" and message:
-                background_tasks.add_task(process_human, chat_id, message, msg_id)
-                return {"status": "processing"}
+                background_tasks.add_task(process_message, chat_id, message, msg_id)
+                return {"status": "queued", "wait": "2-3 minutes"}
         
         return {"status": "ignored"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 
-class ChatReq(BaseModel):
-    message: str
-    phone: str = "web"
-
-@app.post("/chat")
-async def chat(req: ChatReq):
-    add_msg(req.phone, "user", req.message)
-    ctx = get_context(req.phone)
-    r = call_ai([
-        {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE:\n{ctx}"},
-        {"role": "user", "content": req.message}
-    ])
-    add_msg(req.phone, "assistant", r)
-    return {"response": r}
-
-@app.get("/conversations")
-async def list_convs():
-    convs = []
-    for f in CONVERSATIONS_DIR.glob("*.json"):
+@app.get("/clients")
+async def list_clients():
+    clients = []
+    for f in CLIENTS_DIR.glob("*.json"):
         c = json.loads(f.read_text())
-        convs.append({
-            "id": c["hash"],
-            "phone": c["phone"][:10] + "...",
-            "client": c.get("client", {}),
-            "msgs": len(c.get("messages", [])),
-            "last": c.get("last", "")
+        clients.append({
+            "hash": c["phone_hash"],
+            "prenom": c.get("prenom"),
+            "statut": c["statut"],
+            "localisation": c.get("localisation"),
+            "messages": c["total_messages"],
+            "last": c.get("derniere_interaction")
         })
-    return sorted(convs, key=lambda x: x["last"], reverse=True)
+    return sorted(clients, key=lambda x: x.get("last") or "", reverse=True)
 
-@app.get("/conversations/{h}")
-async def get_conv(h: str):
-    for f in CONVERSATIONS_DIR.glob("*.json"):
+@app.get("/clients/{phone_hash}")
+async def get_client(phone_hash: str):
+    for f in CLIENTS_DIR.glob("*.json"):
         c = json.loads(f.read_text())
-        if c["hash"] == h:
+        if c["phone_hash"] == phone_hash:
             return c
     raise HTTPException(404)
+
+@app.post("/test-slack")
+async def test_slack():
+    """Test Slack notification"""
+    test_client = {
+        "phone": "+33612345678",
+        "prenom": "Test",
+        "statut": "nouveau",
+        "localisation": "Krabi",
+        "nb_personnes": 2,
+        "interets": ["plongée", "nature"],
+        "messages": [{"role": "user", "content": "Bonjour, je cherche une excursion!", "timestamp": datetime.now().isoformat()}]
+    }
+    await send_slack_notification(test_client, "new")
+    return {"status": "sent"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
