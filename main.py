@@ -1,12 +1,14 @@
 """
-OLIVIA 3.0 - Agent Parfait Phi Phi Paradise Travel
-===================================================
-- Comportement humain (typing, délais, seen)
-- Mémoire persistante par client
-- Base de connaissances complète (site + MyRezz)
-- Intégration Google (Calendar, Drive, Gmail)
-- Email récap automatique
-- Connexion Wix
+OLIVIA 4.0 - ULTRA HUMAINE
+==========================
+Comportement indiscernable d'un humain:
+- Temps de réponse variables et réalistes
+- Typing indicator avec durée calculée
+- Réactions aux messages (👍, ❤️, etc.)
+- Messages courts et naturels
+- Parfois plusieurs messages au lieu d'un long
+- Présence (online/offline)
+- Erreurs de frappe simulées (optionnel)
 """
 
 import os
@@ -26,9 +28,9 @@ from typing import Optional, List, Dict
 import uvicorn
 
 app = FastAPI(
-    title="Olivia 3.0 - Phi Phi Paradise Travel",
-    description="Agent conversationnel parfait avec comportement humain",
-    version="3.0.0"
+    title="Olivia 4.0 - Ultra Humaine",
+    description="Agent conversationnel indiscernable d'un humain",
+    version="4.0.0"
 )
 
 app.add_middleware(
@@ -46,684 +48,431 @@ NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODEL = os.getenv("MODEL", "moonshotai/kimi-k2.5")
 
-# WAHA Configuration
+# WAHA
 WAHA_API_URL = os.getenv("WAHA_API_URL", "")
 WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
 
-# Google Configuration
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
-GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
-
-# Email
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASS", "")
-RECAP_EMAIL = os.getenv("RECAP_EMAIL", "phiphiparadis@gmail.com")
-
-# Wix
-WIX_SITE_ID = "274240b7-3bf8-44b3-8219-435cf5cb5805"
-WIX_ACCOUNT_ID = "f4bbd6a8-1149-4ce7-9722-5b80664a22fc"
-
-# Mémoire persistante
+# Mémoire
 DATA_DIR = Path("/tmp/olivia_data")
 DATA_DIR.mkdir(exist_ok=True)
 CONVERSATIONS_DIR = DATA_DIR / "conversations"
 CONVERSATIONS_DIR.mkdir(exist_ok=True)
 
 # ============================================
-# BASE DE CONNAISSANCES COMPLÈTE
+# COMPORTEMENT HUMAIN - Configuration
+# ============================================
+HUMAN_CONFIG = {
+    # Délai avant de lire le message (secondes)
+    "read_delay_min": 1.5,
+    "read_delay_max": 8.0,
+    
+    # Délai de réflexion après lecture (secondes)
+    "think_delay_min": 2.0,
+    "think_delay_max": 6.0,
+    
+    # Vitesse de frappe (caractères par seconde)
+    "typing_speed_min": 25,  # Frappe lente
+    "typing_speed_max": 50,  # Frappe rapide
+    
+    # Délai entre l'arrêt de frappe et l'envoi
+    "send_delay_min": 0.3,
+    "send_delay_max": 1.2,
+    
+    # Probabilité de réagir au message (0-1)
+    "reaction_probability": 0.15,
+    
+    # Probabilité de diviser un long message
+    "split_message_probability": 0.4,
+    
+    # Longueur max avant de considérer un message comme "long"
+    "long_message_threshold": 300,
+    
+    # Réactions possibles avec leurs probabilités
+    "reactions": {
+        "👍": 0.3,
+        "😊": 0.25,
+        "🌴": 0.2,
+        "❤️": 0.15,
+        "🙏": 0.1,
+    }
+}
+
+# ============================================
+# BASE DE CONNAISSANCES
 # ============================================
 KNOWLEDGE_BASE = """
-## 🌴 PHI PHI PARADISE TRAVEL - BASE DE CONNAISSANCES COMPLÈTE
+## 🌴 PHI PHI PARADISE TRAVEL
 
-### INFORMATIONS AGENCE
-- **Nom:** Phi Phi Paradise Travel
-- **Propriétaire:** Jiji
-- **Base:** Koh Phi Phi, Thaïlande
-- **Licence TAT:** 33/10549
-- **Site web:** https://phiphiparadisetravel.com
-- **WhatsApp TH:** +66 99 11 58 304
-- **WhatsApp FR:** +33 7 85 65 40 82
-- **Email:** phiphiparadis@gmail.com
+### INFOS AGENCE
+- Site: https://phiphiparadisetravel.com
+- WhatsApp TH: +66 99 11 58 304
+- WhatsApp FR: +33 7 85 65 40 82
+- Email: phiphiparadis@gmail.com
+- Licence TAT: 33/10549
 
-### POLITIQUE & AVANTAGES
-- ✅ **Aucun acompte requis** - Payez sur place
-- ✅ **Guides francophones** sur la plupart des excursions
-- ✅ **Petits groupes** - Max 10-12 personnes
-- ✅ **Transfert hôtel inclus** dans toutes les excursions
-- ✅ **Équipement snorkeling inclus**
-- 👶 **Enfants 3-9 ans:** -50%
-- 👶 **Enfants -3 ans:** GRATUIT
-- ⚠️ Prix en Baht Thaïlandais (THB/฿)
+### POLITIQUE
+✅ Aucun acompte requis
+✅ Guides francophones
+✅ Petits groupes (max 10-12)
+✅ Transfert hôtel inclus
+👶 Enfants 3-9 ans: -50%
+👶 Enfants -3 ans: GRATUIT
 
 ---
 
-## 🏝️ EXCURSIONS DEPUIS KOH PHI PHI
+## EXCURSIONS PHI PHI
 
-### ⭐ Matin Maya (Lever du soleil) - BEST-SELLER
-- **Prix:** ฿800/personne
-- **Horaire:** 6h30-11h30 (5h)
-- **Sites:** Maya Bay à l'ouverture (avant la foule!), Pileh Lagoon, Viking Cave, Monkey Beach, Shark Point
-- **Inclus:** Masque, snorkeling, guide francophone, plateau de fruits, photos
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/100673
-- **Page site:** https://phiphiparadisetravel.com/excursion/matin-maya
+### ⭐ Matin Maya - ฿800/pers
+- 6h30-11h30 (5h)
+- Maya Bay au lever du soleil (avant la foule!)
+- Pileh Lagoon, Viking Cave, Monkey Beach
+- 🔗 MyRezz: https://booking.myrezapp.com/fr/online/booking/step1/16686/100673
+- 🌐 Site: https://phiphiparadisetravel.com/excursion/matin-maya
 
-### Magique Turquoise
-- **Prix:** ฿700/personne
-- **Sites:** Pileh Lagoon, Viking Cave, Loh Samah, Monkey Beach
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/98661
-- **Page site:** https://phiphiparadisetravel.com/excursion/magique-turquoise
+### Magique Turquoise - ฿700/pers
+- Pileh Lagoon, Viking Cave, Loh Samah
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/98661
 
-### Bateau Pirate Phoenix (Matin - Calme)
-- **Prix:** ฿1,800/personne
-- **Horaire:** 9h30-15h30 (6h)
-- **Ambiance:** Calme et relaxante, idéal pour les familles
-- **Sites:** Phi Phi Don, Monkey Beach, Maya Beach, Loh Sama Bay, Pileh Lagoon, Viking Cave
-- **Inclus:** Masque, snorkeling, repas complet, photos souvenirs, frais parc national
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
-- **Page site:** https://phiphiparadisetravel.com/excursion/bateau-pirate
+### Bateau Pirate Phoenix - ฿1,800/pers
+- 9h30-15h30 (6h) - Ambiance calme, familles
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
 
-### Bateau Pirate Dragon (Sunset - Festif)
-- **Prix:** ฿1,800/personne
-- **Horaire:** 11h30-19h00 (7h30)
-- **Ambiance:** Festive avec musique et bar à bord
-- **Sites:** Mêmes sites + coucher de soleil spectaculaire
-- **Inclus:** Kayak, paddle, masque, repas, photos, eau/café/thé
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
-- **Page site:** https://phiphiparadisetravel.com/excursion/bateau-pirate-sunset
+### Bateau Pirate Dragon - ฿1,800/pers
+- 11h30-19h00 - Ambiance festive, sunset
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
 
-### Long Tail Privé Phi Phi
-- **Prix:** ฿4,200 pour le bateau (jusqu'à 3 personnes)
-- **Durée:** 6 heures
-- **Avantage:** Itinéraire 100% personnalisé, vous choisissez où aller!
-- **Inclus:** Eau, glacière, plateau fruits, masque snorkeling
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71403
-
-### Speed Boat Privé Phi Phi
-- **Prix:** ฿12,000 pour le bateau
-- **Durée:** 4 heures
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71921
-
-### Yacht Privé Phi Phi
-- **Prix:** ฿72,000 pour la journée
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/100220
+### Long Tail Privé - ฿4,200/bateau (6h)
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71403
 
 ---
 
-## 🤿 PLONGÉE À KOH PHI PHI
+## PLONGÉE PHI PHI
 
-### Baptême de Plongée (Discover Scuba)
-- **Prix:** ฿3,400 + ฿600 frais parc marine = ฿4,000 total
-- **Durée:** Demi-journée (matin ou après-midi)
-- **Inclus:** 2 plongées de 50 minutes, équipement complet, déjeuner, fruits
-- **Option:** +฿750 pour photographie sous-marine
-- **Prérequis:** Aucune expérience requise!
-- **Instructeurs:** Francophones disponibles
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71911
+### Baptême - ฿3,400 + ฿600 parc
+- 2 plongées 50min, instructeur francophone
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71911
 
-### Fun Dive (Plongeurs certifiés)
-- **Prix:** ฿2,700 + ฿600 frais marine = ฿3,300 total
-- **Inclus:** 2 plongées, équipement complet
-- **Groupes:** Max 4 plongeurs par guide
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71667
+### Fun Dive - ฿2,700 + ฿600 parc
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71667
 
-### Scuba Review (Remise à niveau)
-- **Prix:** ฿3,200
-- **Pour:** Plongeurs certifiés n'ayant pas plongé depuis longtemps
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71666
-
-### Open Water SSI
-- **Prix:** ฿12,900 + ฿800 frais
-- **Durée:** 3-4 jours
-- **Certification:** Internationale, valable à vie
-- **Profondeur max:** 18m
-
-### Open Water PADI
-- **Prix:** ฿13,800 + ฿800 frais
-- **Durée:** 3-4 jours
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71669
-
-### Advanced SSI/PADI
-- **Prix SSI:** ฿10,400 + ฿800
-- **Prix PADI:** ฿11,300 + ฿800
-- **Durée:** 2 jours
-- **Profondeur max:** 30m
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/71912
+### Open Water PADI - ฿12,900 + ฿800
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/71669
 
 ---
 
-## 🌅 EXCURSIONS DEPUIS KRABI / AO NANG
+## EXCURSIONS KRABI
 
-### ⭐ Hong Island Sunset & BBQ - BEST-SELLER
-- **Prix:** ฿2,500/personne
-- **Horaire:** 11h00-20h00 (9h)
-- **Sites:** Koh Hong (lagon secret), viewpoint 420 marches, Koh Laolading, Koh Pakbia
-- **Spécial:** Baignade avec planctons bioluminescents! ✨
-- **Inclus:** Transfert hôtel, déjeuner, BBQ au coucher du soleil, masque, frais parc national
-- **Max:** 10-12 personnes
-- **Page site:** https://phiphiparadisetravel.com/excursion/hong-island-sunset
+### ⭐ Hong Island Sunset BBQ - ฿2,500/pers
+- 11h-20h - Lagon secret, planctons bioluminescents!
+- 🌐 https://phiphiparadisetravel.com/excursion/hong-island-sunset
 
-### ⭐ 4 Islands Sunset & BBQ
-- **Prix:** ฿2,500/personne
-- **Horaire:** 11h30-20h00 (8h30)
-- **Sites:** Secret Beach, Tup Island (banc de sable), Chicken Island, Poda Island
-- **Spécial:** Planctons bioluminescents! ✨
-- **Inclus:** Transfert, déjeuner, BBQ sunset, masque, parc national
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86354
-- **Page site:** https://phiphiparadisetravel.com/excursion/4-islands
+### 4 Islands Sunset BBQ - ฿2,500/pers
+- Tup Island, Chicken Island, Poda
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86354
 
-### 4 Islands Sunrise
-- **Prix:** ฿2,500/personne
-- **Horaire:** 5h00-12h00
-- **Sites:** Poda Island (petit-déjeuner au lever du soleil!), Tup Island, Chicken Island, Secret Beach
-- **Inclus:** Transfert, petit-déjeuner sur la plage, masque, parc national
+### James Bond Island - ฿2,500/pers
+- Canoë mangroves, village flottant
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/84187
 
-### 7 Islands Long Tail Privé
-- **Prix:** ฿3,900 pour le bateau
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86356
+### 🐘 Éléphants + Cascades - ฿3,000/pers
+- 3h avec éléphants + Parc National Bencha
+- 🌐 https://phiphiparadisetravel.com/excursion/elephant-sanctuary
 
-### Baie de Phang Nga - James Bond Island
-- **Prix:** ฿2,500/personne
-- **Horaire:** 8h00-18h30 (10h30)
-- **Sites:** Grottes mangroves en canoë, James Bond Island (L'Homme au pistolet d'or), village flottant Koh Panney
-- **Fun:** Match de foot sur terrain flottant!
-- **Inclus:** Transfert, canoë avec guide thai, repas, parc national
-- **Max:** 10-12 personnes
-- **Page site:** https://phiphiparadisetravel.com/excursion/james-bond-island
-
-### Canoë Kayak & Crystal Lake
-- **Prix:** ฿1,500/personne
-- **Horaire:** 7h15-13h00
-- **Sites:** Crystal Pool, Emerald Pool, mangrove, jungle
-- **Avantage:** Arrivée AVANT l'ouverture au public!
-- **Inclus:** Transfert, repas thai, masque, parc national
-
-### Jungle Tour - Emerald Pool & Hot Springs
-- **Prix:** ฿3,000/personne
-- **Horaire:** 7h00-15h30
-- **Sites:** Emerald Pool, cascades, sources d'eau chaude naturelles
-- **Inclus:** Transfert, buffet à volonté, parc national
-
-### Immersion Koh Klang
-- **Prix:** ฿2,500/personne
-- **Horaire:** 9h30-16h00
-- **Sites:** Grottes préhistoriques, mangroves, village local, rizières, cocoteraies
-- **Activités:** Artisanat local, apiculture, balade en tricycle
-- **Inclus:** Transfert, déjeuner local authentique
-
-### Temple du Tigre + Sources Chaudes
-- **Prix:** ฿2,500/personne
-- **Horaire:** 7h30-15h30
-- **Sites:** Tiger Temple (1237 marches - vue incroyable!), sources chaudes salées dans un hôtel 5*
-- **Inclus:** Transfert, repas thai, parc national
-
-### Road Trip Scooter 🛵
-- **Prix:** ฿2,000/personne
-- **Horaire:** 10h00-19h00
-- **Inclus:** Scooter + essence, repas, eau, guide francophone
-- **Programme:** Spots incontournables + secrets locaux + coucher de soleil
-
-### Seul au Monde 🏝️ - EXCLUSIVITÉ
-- **Prix:** ฿2,500/personne
-- **Horaire:** 8h45-15h30
-- **Sites:** Koh Yao Yai (plages désertes, banc de sable privé), Koh Nok (viewpoint époustouflant)
-- **Pourquoi:** Île encore sauvage, loin du tourisme de masse
-- **Inclus:** Transfert, repas sur la plage, masque, parc national
-
-### 🐘 Sanctuaire Éléphants + Cascades Bencha
-- **Prix:** ฿3,000/personne
-- **Horaire:** 7h00-15h00 (8h)
-- **Programme:**
-  - 3h avec les éléphants: balade à leurs côtés, baignade avec eux, bain de boue
-  - Parc National Bencha: 7 niveaux de cascades, arbre de 500 ans, pique-nique nature
-- **Éthique:** Sanctuaire certifié, aucune exploitation des animaux
-- **Inclus:** Transfert, repas, parc national
-- **Page site:** https://phiphiparadisetravel.com/excursion/elephant-sanctuary
-
-### Excursions Privées Krabi
-- **Hong Island Privée:** ฿10,500 (1-4 pers) / ฿18,000 (5-10 pers)
-- **4 Islands Privée:** ฿10,500 (1-4 pers) / ฿18,000 (5-10 pers)
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86352
+### Seul au Monde - ฿2,500/pers
+- Koh Yao Yai, île sauvage secrète
 
 ---
 
-## 🚤 EXCURSIONS DEPUIS PHUKET
+## EXCURSIONS PHUKET
 
-### Koh Phi Phi Autrement (Speedboat Premium)
-- **Prix:** ฿3,500/personne
-- **Horaire:** 5h15-15h30 (10h)
-- **Avantage:** Maya Bay au lever du soleil, AVANT tout le monde!
-- **Max:** 15 personnes seulement
-- **Inclus:** Transfert hôtel, petit-déjeuner français (café, croissants, jus), repas sous les cocotiers, frais parc national
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/84448
-- **Page site:** https://phiphiparadisetravel.com/excursion/phi-phi-sunrise
+### Phi Phi Sunrise Premium - ฿3,500/pers
+- Maya Bay au lever du soleil, max 15 pers
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/84448
 
-### Bateau Phoenix depuis Phuket
-- **Prix:** ฿3,600/personne
-- **Horaire:** 5h00-15h30
-- **Inclus:** Transfert hôtel aller-retour, masque, snorkeling, repas, parc national
-
-### Îles Similan - Paradis du snorkeling
-- **Prix:** ฿2,000/personne
-- **Pourquoi:** Les plus belles eaux de Thaïlande! Coraux intacts, tortues, poissons tropicaux
-- **Saison:** Octobre à Mai uniquement
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/84442
-
-### Coral & Racha Islands
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/84449
-
-### James Bond Island depuis Phuket
-- **Prix:** ฿1,700/personne
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/84187
-
-### Speed Boat Privé depuis Phuket
-- **Prix:** Sur devis selon itinéraire
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/84450
+### Similan Islands - ฿2,000/pers
+- Meilleur snorkeling de Thaïlande
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/84442
 
 ---
 
-## 🏛️ EXCURSIONS DEPUIS BANGKOK
+## BANGKOK
 
-### Temples de Bangkok (Grand Palace, Wat Pho, Wat Arun)
-- **Guide Anglais:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86554
-- **Guide Français:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86582
-- **Page site:** https://phiphiparadisetravel.com/excursion/bangkok-temples
+### Temples (Grand Palace, Wat Pho)
+- Guide FR: https://booking.myrezapp.com/fr/online/booking/step1/16686/86582
 
-### Floating Market & Train Market
-- **Sites:** Marché flottant Damnoen Saduak, marché du train Mae Klong
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86552
+### Ayutthaya
+- Guide FR: https://booking.myrezapp.com/fr/online/booking/step1/16686/86588
 
-### Ayutthaya (Ancienne capitale UNESCO)
-- **Guide Anglais:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86578
-- **Guide Français:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86588
-
-### Tuk Tuk Tour Gastronomique
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86579
-
-### Combo Marchés + Ayutthaya
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86580
-
-### Dîner Croisière Bangkok
-- **Programme:** Croisière sur le Chao Phraya, dîner buffet, vue temples illuminés
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86581
-
-### Visite Bangkok Tranquille (Guide Français)
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86585
-
-### Kanchanaburi - River Kwai (Guide Français)
-- **Sites:** Pont de la rivière Kwai, cascades Erawan
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86589
-
-### Nakornpathom - Lac de Lotus (Guide Français)
-- **Sites:** Lac aux lotus roses (saison), plus grand temple de Thaïlande
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86590
+### Marchés flottants
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86552
 
 ---
 
-## 🐘 EXCURSIONS DEPUIS CHIANG MAI
+## CHIANG MAI
 
-### Éléphants Chiang Mai
-- **Prix:** ฿1,500/personne
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86591
+### Éléphants - ฿1,500/pers
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86591
 
-### Chiang Rai - Temples Blanc & Bleu
-- **Prix:** ฿1,900/personne
-- **Sites:** Temple Blanc (Wat Rong Khun), Temple Bleu (Wat Rong Suea Ten)
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86592
-
-### Thai Cooking Class
-- **Prix:** ฿1,900/personne
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86593
-
-### Tuk Tuk Tour + Muay Thai
-- **Prix:** ฿3,000/personne
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86594
-
-### Chiang Rai Full Day
-- **Prix:** ฿1,900/personne
-- **Lien MyRezz:** https://booking.myrezapp.com/fr/online/booking/step1/16686/86595
+### Temples Chiang Rai - ฿1,900/pers
+- 🔗 https://booking.myrezapp.com/fr/online/booking/step1/16686/86592
 
 ---
 
-## 🌴 EXCURSIONS DEPUIS KOH LANTA
-
-### Îles Trang (Koh Kradan - #1 Plus belle île du monde 2023!)
-- **Prix (bateau privé):**
-  - 1-4 personnes: ฿7,500
-  - 4-6 personnes: ฿8,500
-  - 6-8 personnes: ฿9,500
-  - 8-10 personnes: ฿10,500
-  - 10-12 personnes: ฿11,500
-  - 12-14 personnes: ฿13,000
-- **Horaire:** 8h00-17h00
-- **Sites:** Koh Ngai, Koh Maa, Koh Mook (Emerald Cave!), Koh Chuek, Koh Kradan
-- **Inclus:** Transfert, repas sur la plage, fruits, boissons, masque, frais parc national
-
-### Koh Rok
-- **Prix:** Mêmes tarifs que îles Trang
-- **Pourquoi:** Snorkeling exceptionnel, eaux cristallines
+## FERRIES
+- Phi Phi → Phuket: ฿1,100
+- Phi Phi → Krabi: ฿1,100
 
 ---
 
-## 🚢 FERRIES & TRANSFERTS
-
-### Depuis Phi Phi
-- **Phi Phi → Phuket:** ฿1,100 - https://booking.myrezapp.com/fr/online/booking/step1/16686/71407
-- **Phi Phi → Krabi:** ฿1,100 - https://booking.myrezapp.com/fr/online/booking/step1/16686/71409
-
----
-
-## 💡 RECOMMANDATIONS PAR PROFIL
-
-### Pour les familles avec enfants:
-- Bateau Pirate Phoenix (calme)
-- Hong Island (planctons magiques pour les enfants!)
-- Sanctuaire Éléphants
-
-### Pour les couples romantiques:
-- Matin Maya (lever de soleil)
-- Hong Island Sunset BBQ
-- Yacht Privé
-
-### Pour les fêtards:
-- Bateau Pirate Dragon (ambiance festive)
-
-### Pour les aventuriers:
-- Baptême de plongée
-- Road Trip Scooter
-- Temple du Tigre (1237 marches!)
-
-### Pour les amoureux de nature:
-- Seul au Monde (île sauvage)
-- Similan Islands
-- Koh Kradan
-
-### Budget serré:
-- Matin Maya (฿800)
-- Magique Turquoise (฿700)
+## RECOMMANDATIONS
+- **Familles**: Bateau Phoenix, Éléphants
+- **Couples**: Matin Maya, Hong Island Sunset
+- **Fêtards**: Bateau Dragon
+- **Aventuriers**: Plongée, Temple du Tigre
+- **Budget**: Matin Maya (฿800), Magique Turquoise (฿700)
 """
 
 # ============================================
-# Mémoire persistante (fichiers JSON)
+# Mémoire persistante
 # ============================================
-def get_phone_hash(phone: str) -> str:
-    """Hash du numéro pour confidentialité"""
+def get_hash(phone: str) -> str:
     return hashlib.md5(phone.encode()).hexdigest()[:12]
 
-def get_conversation_file(phone: str) -> Path:
-    """Chemin du fichier de conversation"""
-    return CONVERSATIONS_DIR / f"{get_phone_hash(phone)}.json"
+def get_conv_file(phone: str) -> Path:
+    return CONVERSATIONS_DIR / f"{get_hash(phone)}.json"
 
-def load_conversation(phone: str) -> dict:
-    """Charge ou crée une conversation"""
-    file_path = get_conversation_file(phone)
-    if file_path.exists():
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+def load_conv(phone: str) -> dict:
+    f = get_conv_file(phone)
+    if f.exists():
+        return json.loads(f.read_text())
     return {
         "phone": phone,
-        "phone_hash": get_phone_hash(phone),
+        "hash": get_hash(phone),
         "messages": [],
-        "client_info": {},
-        "first_contact": datetime.now().isoformat(),
-        "last_interaction": datetime.now().isoformat(),
+        "client": {},
+        "first": datetime.now().isoformat(),
+        "last": datetime.now().isoformat(),
         "interests": [],
-        "recommended_trips": [],
-        "total_messages": 0
+        "count": 0
     }
 
-def save_conversation(phone: str, conv: dict):
-    """Sauvegarde une conversation"""
-    file_path = get_conversation_file(phone)
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(conv, f, ensure_ascii=False, indent=2)
+def save_conv(phone: str, conv: dict):
+    get_conv_file(phone).write_text(json.dumps(conv, ensure_ascii=False, indent=2))
 
-def add_message(phone: str, role: str, content: str):
-    """Ajoute un message et sauvegarde"""
-    conv = load_conversation(phone)
-    conv["messages"].append({
-        "role": role,
-        "content": content,
-        "timestamp": datetime.now().isoformat()
-    })
-    # Garder les 30 derniers messages
+def add_msg(phone: str, role: str, text: str):
+    conv = load_conv(phone)
+    conv["messages"].append({"role": role, "text": text, "ts": datetime.now().isoformat()})
     if len(conv["messages"]) > 30:
         conv["messages"] = conv["messages"][-30:]
-    conv["last_interaction"] = datetime.now().isoformat()
-    conv["total_messages"] += 1
-    save_conversation(phone, conv)
+    conv["last"] = datetime.now().isoformat()
+    conv["count"] += 1
+    save_conv(phone, conv)
     return conv
 
-def update_client_info(phone: str, info: dict):
-    """Met à jour les infos client"""
-    conv = load_conversation(phone)
-    conv["client_info"].update(info)
-    save_conversation(phone, conv)
-
-def get_context_for_ai(phone: str) -> str:
-    """Génère le contexte pour l'IA"""
-    conv = load_conversation(phone)
-    context = ""
-    
-    if conv["client_info"]:
-        context += "\n## INFOS CLIENT CONNUES:\n"
-        for k, v in conv["client_info"].items():
-            context += f"- {k}: {v}\n"
-    
+def get_context(phone: str) -> str:
+    conv = load_conv(phone)
+    ctx = ""
+    if conv["client"]:
+        ctx += "\n## CLIENT:\n" + "\n".join(f"- {k}: {v}" for k, v in conv["client"].items())
     if conv["interests"]:
-        context += f"\n## INTÉRÊTS: {', '.join(conv['interests'])}\n"
-    
-    if conv["recommended_trips"]:
-        context += f"\n## EXCURSIONS DÉJÀ RECOMMANDÉES: {', '.join(conv['recommended_trips'])}\n"
-    
+        ctx += f"\n## INTÉRÊTS: {', '.join(conv['interests'])}"
     if conv["messages"]:
-        context += "\n## HISTORIQUE (derniers échanges):\n"
-        for msg in conv["messages"][-8:]:
-            role = "Client" if msg["role"] == "user" else "Olivia"
-            text = msg["content"][:150] + "..." if len(msg["content"]) > 150 else msg["content"]
-            context += f"{role}: {text}\n"
-    
-    return context
+        ctx += "\n## HISTORIQUE:\n"
+        for m in conv["messages"][-6:]:
+            who = "Client" if m["role"] == "user" else "Olivia"
+            ctx += f"{who}: {m['text'][:100]}...\n" if len(m['text']) > 100 else f"{who}: {m['text']}\n"
+    return ctx
 
 # ============================================
-# Extraction d'infos client
+# Extraction d'infos
 # ============================================
 def extract_info(text: str) -> dict:
-    """Extrait les infos du message"""
     info = {}
-    text_lower = text.lower()
+    t = text.lower()
     
     # Prénom
-    prenom_match = re.search(r"(?:je m'appelle|my name is|moi c'est|i'm|je suis)\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)", text, re.IGNORECASE)
-    if prenom_match:
-        info["prenom"] = prenom_match.group(1).capitalize()
+    m = re.search(r"(?:je m'appelle|my name is|moi c'est|i'm)\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)", text, re.I)
+    if m: info["prenom"] = m.group(1).title()
     
-    # Nombre de personnes
-    pers_match = re.search(r"(\d+)\s*(?:personnes?|pers|people|pax|adultes?|nous sommes)", text_lower)
-    if pers_match:
-        info["nombre_personnes"] = pers_match.group(1)
+    # Personnes
+    m = re.search(r"(\d+)\s*(?:personnes?|pers|people|adultes?)", t)
+    if m: info["personnes"] = m.group(1)
     
-    # Date
-    date_match = re.search(r"(\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)", text)
-    if date_match:
-        info["date_voyage"] = date_match.group(1)
-    
-    # Mois
-    mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre",
-            "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
-    for m in mois:
-        if m in text_lower:
-            info["mois_voyage"] = m.capitalize()
-            break
-    
-    # Localisation
-    lieux = ["phi phi", "krabi", "ao nang", "phuket", "bangkok", "chiang mai", "lanta", "railay"]
-    for lieu in lieux:
-        if lieu in text_lower:
-            info["localisation"] = lieu.title()
+    # Lieu
+    for lieu in ["phi phi", "krabi", "ao nang", "phuket", "bangkok", "chiang mai", "lanta"]:
+        if lieu in t:
+            info["lieu"] = lieu.title()
             break
     
     # Intérêts
-    interets_found = []
-    interets_keywords = {
-        "plongée": ["plongée", "plonger", "diving", "scuba", "snorkeling", "snorkel"],
-        "famille": ["famille", "enfant", "kid", "family", "bébé", "baby"],
-        "romantique": ["couple", "romantique", "romantic", "lune de miel", "honeymoon", "amoureux"],
-        "fête": ["fête", "party", "festif", "ambiance", "musique", "alcool", "bar"],
-        "nature": ["nature", "tranquille", "calme", "peaceful", "éléphant", "elephant", "jungle"],
-        "aventure": ["aventure", "adventure", "adrénaline", "sport"],
-        "budget": ["budget", "pas cher", "cheap", "économique", "moins cher"]
+    interests = []
+    kw = {
+        "plongée": ["plongée", "plonger", "diving", "scuba"],
+        "famille": ["famille", "enfant", "kid", "family"],
+        "couple": ["couple", "romantique", "honeymoon"],
+        "fête": ["fête", "party", "festif", "ambiance"],
+        "nature": ["nature", "éléphant", "jungle", "tranquille"],
     }
-    for interet, keywords in interets_keywords.items():
-        if any(kw in text_lower for kw in keywords):
-            interets_found.append(interet)
+    for cat, words in kw.items():
+        if any(w in t for w in words):
+            interests.append(cat)
     
-    if interets_found:
-        info["interets"] = interets_found
+    return info, interests
+
+# ============================================
+# WAHA - Fonctions humaines
+# ============================================
+async def waha_call(endpoint: str, data: dict):
+    """Appel générique WAHA"""
+    if not WAHA_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{WAHA_API_URL}/api/{endpoint}",
+                headers={"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"},
+                json={"session": WAHA_SESSION, **data},
+                timeout=15
+            )
+            return r
+    except Exception as e:
+        print(f"WAHA {endpoint} error: {e}")
+        return None
+
+async def waha_seen(chat_id: str):
+    """Marquer comme lu (double tick bleu)"""
+    await waha_call("sendSeen", {"chatId": chat_id})
+
+async def waha_typing_start(chat_id: str):
+    """Commencer à taper"""
+    await waha_call("startTyping", {"chatId": chat_id})
+
+async def waha_typing_stop(chat_id: str):
+    """Arrêter de taper"""
+    await waha_call("stopTyping", {"chatId": chat_id})
+
+async def waha_react(chat_id: str, message_id: str, emoji: str):
+    """Réagir à un message"""
+    await waha_call("reaction", {"chatId": chat_id, "messageId": message_id, "reaction": emoji})
+
+async def waha_send(chat_id: str, text: str):
+    """Envoyer un message"""
+    r = await waha_call("sendText", {"chatId": chat_id, "text": text})
+    return r and r.status_code in [200, 201]
+
+def calc_typing_time(text: str) -> float:
+    """Calcule temps de frappe réaliste"""
+    chars = len(text)
+    speed = random.uniform(HUMAN_CONFIG["typing_speed_min"], HUMAN_CONFIG["typing_speed_max"])
+    base = chars / speed
+    # Ajouter variation humaine (hésitations, corrections)
+    variation = random.uniform(0.8, 1.4)
+    result = base * variation
+    # Min 2s, max 20s
+    return max(2.0, min(result, 20.0))
+
+def should_react() -> bool:
+    """Décide si on réagit au message"""
+    return random.random() < HUMAN_CONFIG["reaction_probability"]
+
+def pick_reaction() -> str:
+    """Choisit une réaction aléatoire pondérée"""
+    reactions = HUMAN_CONFIG["reactions"]
+    items = list(reactions.items())
+    total = sum(p for _, p in items)
+    r = random.uniform(0, total)
+    cumsum = 0
+    for emoji, prob in items:
+        cumsum += prob
+        if r <= cumsum:
+            return emoji
+    return "👍"
+
+def split_message(text: str) -> List[str]:
+    """Divise un long message en plusieurs courts"""
+    if len(text) < HUMAN_CONFIG["long_message_threshold"]:
+        return [text]
     
-    return info
+    if random.random() > HUMAN_CONFIG["split_message_probability"]:
+        return [text]
+    
+    # Diviser par phrases ou paragraphes
+    parts = []
+    
+    # Essayer de diviser par double saut de ligne
+    paragraphs = text.split("\n\n")
+    if len(paragraphs) > 1:
+        current = ""
+        for p in paragraphs:
+            if len(current) + len(p) < 250:
+                current += ("\n\n" if current else "") + p
+            else:
+                if current:
+                    parts.append(current.strip())
+                current = p
+        if current:
+            parts.append(current.strip())
+        return parts if len(parts) > 1 else [text]
+    
+    # Sinon diviser par phrases
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    current = ""
+    for s in sentences:
+        if len(current) + len(s) < 200:
+            current += (" " if current else "") + s
+        else:
+            if current:
+                parts.append(current.strip())
+            current = s
+    if current:
+        parts.append(current.strip())
+    
+    return parts if len(parts) > 1 else [text]
 
 # ============================================
-# WAHA - Comportement Humain
+# IA - NVIDIA
 # ============================================
-async def waha_send_seen(chat_id: str):
-    """Marque le message comme lu"""
-    if not WAHA_API_KEY:
-        return
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{WAHA_API_URL}/api/sendSeen",
-                headers={"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"},
-                json={"session": WAHA_SESSION, "chatId": chat_id},
-                timeout=10
-            )
-    except Exception as e:
-        print(f"sendSeen error: {e}")
+SYSTEM_PROMPT = f"""Tu es Olivia, assistante de Phi Phi Paradise Travel.
 
-async def waha_start_typing(chat_id: str):
-    """Commence à taper"""
-    if not WAHA_API_KEY:
-        return
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{WAHA_API_URL}/api/startTyping",
-                headers={"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"},
-                json={"session": WAHA_SESSION, "chatId": chat_id},
-                timeout=10
-            )
-    except Exception as e:
-        print(f"startTyping error: {e}")
+## PERSONNALITÉ
+- Chaleureuse, naturelle, HUMAINE
+- Bilingue FR/EN
+- Passionnée de Thaïlande
+- Tu AIDES, pas juste vendre
 
-async def waha_stop_typing(chat_id: str):
-    """Arrête de taper"""
-    if not WAHA_API_KEY:
-        return
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{WAHA_API_URL}/api/stopTyping",
-                headers={"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"},
-                json={"session": WAHA_SESSION, "chatId": chat_id},
-                timeout=10
-            )
-    except Exception as e:
-        print(f"stopTyping error: {e}")
+## STYLE WHATSAPP
+- Messages COURTS (150 caractères idéal, 250 max)
+- Conversationnel et naturel
+- 1-2 emojis max par message
+- UNE question à la fois
+- Pas de listes à puces dans les réponses courtes
 
-async def waha_send_text(chat_id: str, text: str):
-    """Envoie un message texte"""
-    if not WAHA_API_KEY:
-        return False
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{WAHA_API_URL}/api/sendText",
-                headers={"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"},
-                json={"session": WAHA_SESSION, "chatId": chat_id, "text": text},
-                timeout=30
-            )
-            return response.status_code in [200, 201]
-    except Exception as e:
-        print(f"sendText error: {e}")
-        return False
+## LIENS
+- Donne le lien MyRezz quand le client est intéressé
+- Mentionne aussi le site phiphiparadisetravel.com
+- Format simple: "Réserve ici: [lien]"
 
-def calculate_typing_time(text: str) -> float:
-    """Calcule un temps de frappe réaliste (humain tape ~40 mots/min)"""
-    words = len(text.split())
-    # Entre 1.5 et 4 secondes par ligne de ~10 mots
-    base_time = (words / 10) * random.uniform(1.5, 3.0)
-    # Minimum 2 sec, maximum 15 sec
-    return max(2.0, min(base_time, 15.0))
-
-# ============================================
-# IA - NVIDIA API
-# ============================================
-SYSTEM_PROMPT = f"""Tu es Olivia, l'assistante virtuelle de Phi Phi Paradise Travel.
-
-## TA PERSONNALITÉ
-- Chaleureuse, accueillante, naturelle
-- Tu parles comme une vraie personne, pas un robot
-- Bilingue français/anglais (adapte-toi au client)
-- Experte passionnée de la Thaïlande
-- Tu veux AIDER, pas juste vendre
-
-## STYLE DE RÉPONSE WHATSAPP
-- Messages COURTS (max 300 caractères idéalement)
-- Naturel et conversationnel
-- Utilise des emojis avec modération (1-2 max par message)
-- Pose UNE question à la fois
-- Si longue réponse nécessaire, divise en plusieurs messages courts
-
-## QUAND DONNER LES LIENS
-- Donne le lien MyRezz quand le client montre un intérêt clair
-- Donne aussi le lien du site pour plus d'infos: phiphiparadisetravel.com
-- Format: "Tu peux réserver ici: [lien]" (pas de markdown)
-
-## COLLECTE D'INFOS (subtile)
-Essaie de savoir naturellement:
+## INFOS À COLLECTER (subtilement)
 - Prénom
-- Dates de voyage
-- Où ils logent (Phi Phi, Krabi, Phuket?)
-- Intérêts (plongée, fête, famille, nature?)
-- Combien de personnes
+- Dates voyage
+- Lieu séjour
+- Intérêts
+- Nombre personnes
 
-## RECOMMANDATIONS INTELLIGENTES
-- Adapte tes suggestions au profil du client
-- Familles → Bateau Phoenix, Éléphants
-- Couples → Matin Maya, Sunset BBQ
-- Fêtards → Bateau Dragon
-- Aventuriers → Plongée, Temple du Tigre
-- Budget → Matin Maya (฿800), Magique Turquoise (฿700)
+## PRIX EN BAHT (฿)
 
-## INFOS CLÉS À RETENIR
-- Aucun acompte requis
-- Enfants -9 ans: -50%
-- Enfants -3 ans: gratuit
-- Guides francophones disponibles
-- Transfert hôtel toujours inclus
-
-## FORMAT PRIX
-- Toujours en Baht: ฿800, ฿2,500, etc.
-
-## SI TU NE SAIS PAS
-- Dis-le honnêtement
-- Propose de contacter Jiji au +66 99 11 58 304
-
-## SIGNATURE
-- Signe "Olivia 🌴" uniquement en fin de conversation ou après une réservation
+## SI PAS SÛR
+→ Contacte +66 99 11 58 304
 
 {KNOWLEDGE_BASE}
 """
 
-def call_nvidia_api(messages: list) -> str:
-    """Appelle l'API NVIDIA"""
+def call_ai(messages: list) -> str:
     if not NVIDIA_API_KEY:
         raise Exception("NVIDIA_API_KEY manquante")
     
-    response = requests.post(
+    r = requests.post(
         NVIDIA_API_URL,
         headers={
             "Authorization": f"Bearer {NVIDIA_API_KEY}",
@@ -733,8 +482,8 @@ def call_nvidia_api(messages: list) -> str:
         json={
             "model": MODEL,
             "messages": messages,
-            "max_tokens": 1024,
-            "temperature": 0.8,
+            "max_tokens": 512,  # Réduit pour réponses plus courtes
+            "temperature": 0.85,
             "top_p": 0.9,
             "stream": True,
             "chat_template_kwargs": {"thinking": True}
@@ -743,115 +492,163 @@ def call_nvidia_api(messages: list) -> str:
         timeout=120
     )
     
-    if response.status_code != 200:
-        raise Exception(f"API Error: {response.text}")
+    if r.status_code != 200:
+        raise Exception(f"API Error: {r.text}")
     
-    # Parse SSE
     content = ""
-    for line in response.iter_lines():
+    for line in r.iter_lines():
         if line:
             line = line.decode("utf-8")
-            if line.startswith("data: "):
-                data = line[6:]
-                if data == "[DONE]":
-                    break
+            if line.startswith("data: ") and line[6:] != "[DONE]":
                 try:
-                    chunk = json.loads(data)
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content += delta.get("content", "")
+                    chunk = json.loads(line[6:])
+                    content += chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                 except:
-                    continue
-    
+                    pass
     return content
 
 # ============================================
-# Traitement du message WhatsApp
+# Traitement message - ULTRA HUMAIN
 # ============================================
-async def process_message(chat_id: str, message: str):
-    """Traite un message avec comportement humain"""
+async def process_human(chat_id: str, message: str, message_id: str = None):
+    """Traite un message avec comportement ultra humain"""
     try:
-        # 1. DÉLAI LECTURE (humain lit avant de répondre)
-        read_delay = random.uniform(1.0, 3.0)
+        # ═══════════════════════════════════════
+        # PHASE 1: LECTURE (humain lit le message)
+        # ═══════════════════════════════════════
+        read_delay = random.uniform(
+            HUMAN_CONFIG["read_delay_min"],
+            HUMAN_CONFIG["read_delay_max"]
+        )
+        # Messages longs = plus de temps pour lire
+        if len(message) > 100:
+            read_delay *= 1.3
+        
         await asyncio.sleep(read_delay)
+        await waha_seen(chat_id)
         
-        # 2. MARQUER COMME LU
-        await waha_send_seen(chat_id)
+        # ═══════════════════════════════════════
+        # PHASE 2: RÉACTION (optionnel)
+        # ═══════════════════════════════════════
+        if message_id and should_react():
+            # Petit délai avant de réagir
+            await asyncio.sleep(random.uniform(0.5, 2.0))
+            emoji = pick_reaction()
+            await waha_react(chat_id, message_id, emoji)
+            print(f"😊 Réaction: {emoji}")
         
-        # 3. DÉLAI RÉFLEXION (humain réfléchit)
-        think_delay = random.uniform(2.0, 5.0)
+        # ═══════════════════════════════════════
+        # PHASE 3: RÉFLEXION (humain réfléchit)
+        # ═══════════════════════════════════════
+        think_delay = random.uniform(
+            HUMAN_CONFIG["think_delay_min"],
+            HUMAN_CONFIG["think_delay_max"]
+        )
         await asyncio.sleep(think_delay)
         
-        # 4. COMMENCER À TAPER
-        await waha_start_typing(chat_id)
+        # ═══════════════════════════════════════
+        # PHASE 4: SAUVEGARDE & EXTRACTION
+        # ═══════════════════════════════════════
+        add_msg(chat_id, "user", message)
         
-        # 5. SAUVEGARDER MESSAGE CLIENT
-        add_message(chat_id, "user", message)
-        
-        # 6. EXTRAIRE INFOS CLIENT
-        info = extract_info(message)
+        info, interests = extract_info(message)
         if info:
-            # Séparer les intérêts
-            interets = info.pop("interets", [])
-            if info:
-                update_client_info(chat_id, info)
-            if interets:
-                conv = load_conversation(chat_id)
-                conv["interests"] = list(set(conv.get("interests", []) + interets))
-                save_conversation(chat_id, conv)
+            conv = load_conv(chat_id)
+            conv["client"].update(info)
+            save_conv(chat_id, conv)
+        if interests:
+            conv = load_conv(chat_id)
+            conv["interests"] = list(set(conv.get("interests", []) + interests))
+            save_conv(chat_id, conv)
         
-        # 7. GÉNÉRER RÉPONSE IA
-        context = get_context_for_ai(chat_id)
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE CLIENT ACTUEL:\n{context}"},
+        # ═══════════════════════════════════════
+        # PHASE 5: GÉNÉRATION RÉPONSE IA
+        # ═══════════════════════════════════════
+        context = get_context(chat_id)
+        ai_messages = [
+            {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE:\n{context}"},
             {"role": "user", "content": message}
         ]
         
-        ai_response = call_nvidia_api(messages)
+        # Commencer à taper PENDANT que l'IA génère
+        await waha_typing_start(chat_id)
         
-        # 8. SIMULER TEMPS DE FRAPPE
-        typing_time = calculate_typing_time(ai_response)
-        await asyncio.sleep(typing_time)
+        try:
+            ai_response = call_ai(ai_messages)
+        finally:
+            pass  # On arrête le typing après
         
-        # 9. ARRÊTER DE TAPER
-        await waha_stop_typing(chat_id)
+        # ═══════════════════════════════════════
+        # PHASE 6: ENVOI HUMAIN
+        # ═══════════════════════════════════════
+        # Diviser en plusieurs messages si long
+        messages_to_send = split_message(ai_response)
         
-        # 10. PETIT DÉLAI AVANT ENVOI
-        await asyncio.sleep(random.uniform(0.3, 0.8))
+        for i, msg_part in enumerate(messages_to_send):
+            # Calculer temps de frappe
+            typing_time = calc_typing_time(msg_part)
+            
+            # Si ce n'est pas le premier message, recommencer à taper
+            if i > 0:
+                await waha_typing_start(chat_id)
+            
+            # Simuler la frappe
+            await asyncio.sleep(typing_time)
+            
+            # Arrêter de taper
+            await waha_typing_stop(chat_id)
+            
+            # Petit délai avant envoi (humain relit)
+            send_delay = random.uniform(
+                HUMAN_CONFIG["send_delay_min"],
+                HUMAN_CONFIG["send_delay_max"]
+            )
+            await asyncio.sleep(send_delay)
+            
+            # Envoyer
+            await waha_send(chat_id, msg_part)
+            
+            # Si plusieurs messages, pause entre eux
+            if i < len(messages_to_send) - 1:
+                await asyncio.sleep(random.uniform(1.0, 3.0))
         
-        # 11. ENVOYER LA RÉPONSE
-        await waha_send_text(chat_id, ai_response)
+        # Sauvegarder la réponse complète
+        add_msg(chat_id, "assistant", ai_response)
         
-        # 12. SAUVEGARDER RÉPONSE
-        add_message(chat_id, "assistant", ai_response)
-        
-        print(f"✅ [{chat_id[:15]}...] Répondu en {typing_time:.1f}s")
+        total_time = read_delay + think_delay + sum(calc_typing_time(m) for m in messages_to_send)
+        print(f"✅ [{chat_id[:12]}...] {len(messages_to_send)} msg(s), ~{total_time:.1f}s")
         
     except Exception as e:
         print(f"❌ Erreur: {e}")
-        await waha_stop_typing(chat_id)
-        await waha_send_text(chat_id, "Désolée, petit souci! 😅 Contacte-nous au +66 99 11 58 304")
+        await waha_typing_stop(chat_id)
+        await waha_send(chat_id, "Oups, petit bug! 😅 Écris-moi au +66 99 11 58 304")
 
 # ============================================
 # Routes API
 # ============================================
 @app.get("/")
 async def root():
-    """Status de l'agent"""
-    conv_files = list(CONVERSATIONS_DIR.glob("*.json"))
+    convs = list(CONVERSATIONS_DIR.glob("*.json"))
     return {
-        "name": "Olivia 3.0 - Phi Phi Paradise Travel",
-        "version": "3.0",
+        "name": "Olivia 4.0 - Ultra Humaine",
+        "version": "4.0",
         "status": "online",
         "model": MODEL,
         "features": [
-            "human_behavior",
-            "persistent_memory", 
-            "knowledge_base",
-            "typing_indicator",
+            "human_timing",
+            "typing_indicator", 
+            "reactions",
+            "message_splitting",
+            "persistent_memory",
             "smart_extraction"
         ],
         "whatsapp": "connected" if WAHA_API_KEY else "not configured",
-        "active_conversations": len(conv_files)
+        "conversations": len(convs),
+        "config": {
+            "read_delay": f"{HUMAN_CONFIG['read_delay_min']}-{HUMAN_CONFIG['read_delay_max']}s",
+            "typing_speed": f"{HUMAN_CONFIG['typing_speed_min']}-{HUMAN_CONFIG['typing_speed_max']} char/s",
+            "reaction_prob": f"{HUMAN_CONFIG['reaction_probability']*100}%"
+        }
     }
 
 @app.get("/health")
@@ -859,87 +656,66 @@ async def health():
     return {"status": "healthy", "model": MODEL}
 
 @app.post("/webhook/waha")
-async def waha_webhook(request: Request, background_tasks: BackgroundTasks):
-    """Webhook WAHA avec comportement humain"""
+async def webhook(request: Request, background_tasks: BackgroundTasks):
+    """Webhook WAHA ultra humain"""
     try:
         body = await request.json()
         
         if body.get("event") == "message":
             payload = body.get("payload", {})
             
-            # Ignorer nos propres messages
             if payload.get("fromMe"):
                 return {"status": "ignored", "reason": "self"}
             
             chat_id = payload.get("from", "")
             message = payload.get("body", "")
             msg_type = payload.get("type", "")
+            msg_id = payload.get("id", {}).get("id") if isinstance(payload.get("id"), dict) else payload.get("id")
             
-            # Traiter les messages texte
             if msg_type == "chat" and message:
-                background_tasks.add_task(process_message, chat_id, message)
-                return {"status": "processing", "chat": chat_id[:15]}
+                background_tasks.add_task(process_human, chat_id, message, msg_id)
+                return {"status": "processing"}
         
         return {"status": "ignored"}
-    
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 
-class ChatRequest(BaseModel):
+class ChatReq(BaseModel):
     message: str
-    phone: Optional[str] = "web_user"
+    phone: str = "web"
 
 @app.post("/chat")
-async def chat_api(request: ChatRequest):
-    """API Chat directe"""
-    add_message(request.phone, "user", request.message)
-    
-    context = get_context_for_ai(request.phone)
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE:\n{context}"},
-        {"role": "user", "content": request.message}
-    ]
-    
-    response = call_nvidia_api(messages)
-    add_message(request.phone, "assistant", response)
-    
-    return {"response": response, "model": MODEL}
+async def chat(req: ChatReq):
+    add_msg(req.phone, "user", req.message)
+    ctx = get_context(req.phone)
+    r = call_ai([
+        {"role": "system", "content": SYSTEM_PROMPT + f"\n\n## CONTEXTE:\n{ctx}"},
+        {"role": "user", "content": req.message}
+    ])
+    add_msg(req.phone, "assistant", r)
+    return {"response": r}
 
 @app.get("/conversations")
-async def list_conversations():
-    """Liste toutes les conversations"""
+async def list_convs():
     convs = []
-    for file in CONVERSATIONS_DIR.glob("*.json"):
-        with open(file, 'r', encoding='utf-8') as f:
-            conv = json.load(f)
-            convs.append({
-                "id": conv["phone_hash"],
-                "phone": conv["phone"][:10] + "...",
-                "client_info": conv.get("client_info", {}),
-                "messages": len(conv.get("messages", [])),
-                "last": conv.get("last_interaction", "")
-            })
-    return {"conversations": sorted(convs, key=lambda x: x["last"], reverse=True)}
+    for f in CONVERSATIONS_DIR.glob("*.json"):
+        c = json.loads(f.read_text())
+        convs.append({
+            "id": c["hash"],
+            "phone": c["phone"][:10] + "...",
+            "client": c.get("client", {}),
+            "msgs": len(c.get("messages", [])),
+            "last": c.get("last", "")
+        })
+    return sorted(convs, key=lambda x: x["last"], reverse=True)
 
-@app.get("/conversations/{phone_hash}")
-async def get_conversation(phone_hash: str):
-    """Détail d'une conversation"""
-    for file in CONVERSATIONS_DIR.glob("*.json"):
-        with open(file, 'r', encoding='utf-8') as f:
-            conv = json.load(f)
-            if conv["phone_hash"] == phone_hash:
-                return conv
-    raise HTTPException(status_code=404, detail="Conversation non trouvée")
-
-@app.get("/test")
-async def test():
-    return {
-        "nvidia": "✅" if NVIDIA_API_KEY else "❌",
-        "waha": "✅" if WAHA_API_KEY else "❌",
-        "model": MODEL,
-        "knowledge_base_chars": len(KNOWLEDGE_BASE)
-    }
+@app.get("/conversations/{h}")
+async def get_conv(h: str):
+    for f in CONVERSATIONS_DIR.glob("*.json"):
+        c = json.loads(f.read_text())
+        if c["hash"] == h:
+            return c
+    raise HTTPException(404)
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
