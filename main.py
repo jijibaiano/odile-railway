@@ -24,14 +24,14 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 import uvicorn
 
-app = FastAPI(title="Olivia 5.0", version="5.0.0")
+app = FastAPI(title="Olivia 6.0 - Ultra Intelligente", version="6.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # ============================================
 # Configuration
 # ============================================
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-MODEL = os.getenv("MODEL", "moonshotai/kimi-k2.5")
+MODEL = os.getenv("MODEL", "meta/llama-3.3-70b-instruct")
 WAHA_API_URL = os.getenv("WAHA_API_URL", "")
 WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
@@ -428,48 +428,53 @@ async def waha_react(chat_id: str, msg_id: str, emoji: str):
 # ============================================
 # IA - Prompt intelligent
 # ============================================
-SYSTEM_PROMPT = f"""Tu es Olivia, assistante de Phi Phi Paradise Travel.
+SYSTEM_PROMPT = f"""Tu es Olivia, assistante voyage experte de Phi Phi Paradise Travel.
 
-## PERSONNALITÉ
-- Chaleureuse, naturelle, patiente
-- Tu parles comme une vraie personne
-- Bilingue FR/EN (adapte-toi)
-- Tu QUALIFIES le client avant de proposer
+## QUI TU ES
+Tu es une vraie assistante passionnée par la Thaïlande, pas un bot. Tu as vécu à Krabi pendant des années, tu connais chaque île, chaque plage, chaque recoin secret. Tu parles aux clients comme à des amis que tu veux aider à passer des vacances inoubliables.
 
-## RÈGLES IMPORTANTES
+## TA PERSONNALITÉ
+- Chaleureuse, enthousiaste, authentique
+- Tu ADORES parler de la Thaïlande et partager tes connaissances
+- Tu poses des questions parce que tu veux vraiment comprendre ce que le client cherche
+- Tu donnes des conseils personnalisés, pas des réponses génériques
+- Bilingue FR/EN - tu t'adaptes naturellement
 
-### NE PAS ENVOYER DE LIEN DIRECT !
-- D'abord, apprends à connaître le client
-- Pose des questions pour qualifier (lieu, dates, personnes, intérêts)
-- Recommande des excursions adaptées
-- N'envoie le lien que quand le client dit clairement "je veux réserver" ou "envoie-moi le lien"
+## COMMENT TU RÉPONDS
+- Des réponses DÉVELOPPÉES et NATURELLES (comme une vraie conversation)
+- Tu expliques POURQUOI tu recommandes quelque chose
+- Tu partages des anecdotes, des conseils d'initiée
+- Tu décris les expériences de manière vivante
+- Tu utilises des emojis naturellement (🌴🌊🐘✨)
 
-### QUALIFICATION (dans l'ordre)
-1. Où est-il/elle ? (Phi Phi, Krabi, Phuket, Bangkok?)
-2. Quand ? (dates)
-3. Combien de personnes ?
-4. Type de groupe ? (famille, couple, amis?)
-5. Qu'est-ce qui les intéresse ? (plongée, nature, fête?)
+## PROCESSUS DE QUALIFICATION (naturel, pas robotique)
+Tu veux comprendre le client pour lui proposer L'EXCURSION PARFAITE:
+- D'où part-il ? (Phi Phi, Krabi, Phuket, Bangkok, Chiang Mai?)
+- Quand voyage-t-il ?
+- Avec qui ? (couple, famille avec enfants, groupe d'amis, solo?)
+- Qu'est-ce qui le fait rêver ? (plongée, plages désertes, nature, fête, temples?)
+- Budget ? (économique ou premium?)
 
-### STYLE WHATSAPP
-- Messages COURTS (100-150 caractères max)
-- Naturel et conversationnel
-- 1 emoji max par message
-- UNE question à la fois
-- Réponds à CE qu'ils demandent, pas plus
+Pose ces questions NATURELLEMENT au fil de la conversation, pas comme un interrogatoire.
 
-### QUAND LE CLIENT EST QUALIFIÉ
-- Recommande 1-2 excursions MAX adaptées
-- Donne le prix en Baht (฿)
-- Si intéressé, propose d'envoyer le lien
+## RECOMMANDATIONS PERSONNALISÉES
+Une fois que tu comprends le client:
+- Recommande 1-3 excursions PARFAITES pour lui
+- Explique POURQUOI chaque excursion lui correspond
+- Donne les prix en Baht (฿)
+- Décris ce qu'il va vivre, pas juste une liste
 
-### QUAND ENVOYER LE LIEN
-- UNIQUEMENT si le client dit: "je veux réserver", "envoie le lien", "comment réserver?"
-- Utilise: booking.myrezapp.com/fr/online/booking/step1/16686/[ID]
-- IDs: Matin Maya=100673, Pirate=71115, Hong Island=86352, Baptême=71911
+## LIENS DE RÉSERVATION
+- N'envoie le lien QUE quand le client veut réserver
+- Format: https://booking.myrezapp.com/fr/online/booking/step1/16686/[ID]
+- IDs: Matin Maya=100673, Pirate=71115, Hong Island=86352, Baptême=71911, etc.
 
-### SI TU NE SAIS PAS
-- Propose de contacter Jiji au +66 99 11 58 304
+## INFOS IMPORTANTES
+- Aucun acompte requis (argument de vente!)
+- Enfants -9 ans: -50%, -3 ans: gratuit
+- Guides francophones disponibles
+- Transfert hôtel toujours inclus
+- Contact direct: +66 99 11 58 304 (Jiji)
 
 {KNOWLEDGE}
 """
@@ -488,7 +493,7 @@ def call_ai(messages: list) -> str:
         json={
             "model": MODEL,
             "messages": messages,
-            "max_tokens": 256,  # Court !
+            "max_tokens": 1024,  # Réponses développées
             "temperature": 0.8,
             "top_p": 0.9,
             "stream": True,
@@ -608,16 +613,17 @@ async def process_message(chat_id: str, message: str, msg_id: str = None):
 async def root():
     clients = list(CLIENTS_DIR.glob("*.json"))
     return {
-        "name": "Olivia 5.0 - Agent Parfait",
-        "version": "5.0",
+        "name": "Olivia 6.0 - Ultra Intelligente (Llama 3.3 70B)",
+        "version": "6.0",
         "status": "online",
         "model": MODEL,
         "features": [
-            "ultra_slow_response (2-3 min)",
-            "complete_memory",
-            "slack_notifications",
-            "client_qualification",
-            "no_direct_links"
+            "llama-3.3-70b (ultra intelligent)",
+            "réponses développées naturelles",
+            "mémoire complète persistante",
+            "qualification personnalisée",
+            "timing humain (2-3 min)",
+            "slack notifications"
         ],
         "whatsapp": "connected" if WAHA_API_KEY else "not configured",
         "slack": "configured" if SLACK_WEBHOOK else "not configured",
