@@ -1,28 +1,31 @@
 """
-Odile - Clone pour Railway
-Agent de voyage Phi Phi Paradise Travel
-Utilise NVIDIA API avec Kimi K2.5
-Connecté à WhatsApp via WAHA
+Olivia 2.0 - Assistant Phi Phi Paradise Travel
+- Mémoire par client
+- Accès Google Calendar/Drive/Gmail
+- Base de connaissances site web
+- Email récap automatique
+- Liens réservation MyRezz
 """
 
 import os
 import json
 import requests
 import httpx
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 import uvicorn
+import hashlib
+import re
 
 app = FastAPI(
-    title="Odile - Phi Phi Paradise Travel",
-    description="Assistant voyage intelligent pour la Thaïlande",
-    version="1.0.0"
+    title="Olivia - Phi Phi Paradise Travel",
+    description="Assistant voyage intelligent avec mémoire et intégrations",
+    version="2.0.0"
 )
 
-# CORS pour permettre les appels depuis n'importe où
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,84 +39,286 @@ app.add_middleware(
 # ============================================
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-MODEL = "moonshotai/kimi-k2.5"
+MODEL = os.getenv("MODEL", "moonshotai/kimi-k2.5")
 
 # WAHA Configuration
-WAHA_API_URL = os.getenv("WAHA_API_URL", "https://devlikeaprowaha-production-ed27.up.railway.app")
+WAHA_API_URL = os.getenv("WAHA_API_URL", "")
 WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
 
-# ============================================
-# Personnalité Odile
-# ============================================
-SYSTEM_PROMPT = """Tu es Odile, l'assistante virtuelle de Phi Phi Paradise Travel, une agence de voyage basée à Koh Phi Phi, Thaïlande.
+# Google Configuration
+GOOGLE_SERVICE_ACCOUNT = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
-## Ta personnalité
-- Chaleureuse et accueillante, chaque voyageur est un invité
-- Helpful first - tu aides, tu ne pousses pas à la vente
-- Bilingue français/anglais - tu t'adaptes à la langue du client
-- Experte de la Thaïlande - îles, plongée, temples, éléphants
+# Email Configuration
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
+RECAP_EMAIL = os.getenv("RECAP_EMAIL", "phiphiparadis@gmail.com")
 
-## Informations agence
-- WhatsApp: +66 99 11 58 304 (Thaïlande) / +33 7 85 65 40 82 (France)
-- Site: phiphiparadisetravel.com
+# ============================================
+# Base de connaissances - Phi Phi Paradise Travel
+# ============================================
+KNOWLEDGE_BASE = """
+## PHI PHI PARADISE TRAVEL - BASE DE CONNAISSANCES
+
+### INFORMATIONS AGENCE
+- Nom: Phi Phi Paradise Travel
+- Propriétaire: Jiji
+- Base: Koh Phi Phi, Thaïlande
 - Licence TAT: 33/10549
-- Aucun acompte requis
-- Guides francophones disponibles
+- Site: https://phiphiparadisetravel.com
+- WhatsApp TH: +66 99 11 58 304
+- WhatsApp FR: +33 7 85 65 40 82
+- Email: phiphiparadis@gmail.com
 
-## Destinations principales
-- Koh Phi Phi (base) - Maya Bay, plongée, bateaux pirates
-- Krabi/Ao Nang - Hong Island, 4 Islands, James Bond Island
-- Phuket - Similan Islands, Phi Phi day trips
-- Koh Lanta - Îles Trang, Koh Kradan (#1 monde 2023)
-- Bangkok - Temples, marchés flottants, Ayutthaya
+### POLITIQUE
+- ✅ Aucun acompte requis
+- ✅ Guides francophones disponibles
+- ✅ Petits groupes (max 10-12 personnes)
+- ✅ Transfert hôtel inclus
+- 👶 Enfants -9 ans: -50%
+- 👶 Enfants -3 ans: GRATUIT
 
-## Excursions populaires (prix en THB)
-- Matin Maya (lever soleil): ฿800
-- Bateau Pirate Phoenix/Dragon: ฿1,800
-- Hong Island Sunset BBQ: ฿2,500
-- 4 Islands Sunset BBQ: ฿2,500
-- Baptême plongée: ฿4,200
-- Sanctuaire éléphants + cascades: ฿3,000
-- Phi Phi depuis Phuket: ฿3,500
+### EXCURSIONS DEPUIS KOH PHI PHI
 
-## Ton style
-- Utilise des emojis avec parcimonie (🌴🌊🐘)
-- Réponds de manière concise mais complète
-- Ne mets PAS de liens markdown [texte](url) - écris juste le numéro WhatsApp
-- Adapte-toi: questions simples = réponses courtes, demandes complexes = plus de détails
-- Signe "Odile - Phi Phi Paradise Travel" en fin de conversation
+#### Matin Maya (Lever du soleil) ⭐ BEST-SELLER
+- Prix: ฿800/pers
+- Horaire: 6h30-11h30
+- Sites: Maya Bay à l'ouverture, Pileh Lagoon, Viking Cave, Monkey Beach, Shark Point
+- Inclus: Masque, snorkeling, guide francophone, fruits, photos
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/100673
 
-## Règles
-- Ne jamais inventer de prix ou d'informations
-- Pour réserver, dis de répondre directement à ce message WhatsApp
-- Être honnête si tu ne sais pas quelque chose
-- Réponses courtes pour WhatsApp (max 500 caractères si possible)
+#### Magique Turquoise
+- Prix: ฿700/pers
+- Sites: Pileh Lagoon, Viking Cave, Loh Samah, Monkey Beach
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/98661
+
+#### Bateau Pirate Phoenix (Matin)
+- Prix: ฿1,800/pers
+- Horaire: 9h30-15h30
+- Ambiance: Calme, idéal familles
+- Inclus: Masque, snorkeling, repas, photos, parc national
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
+
+#### Bateau Pirate Dragon (Sunset)
+- Prix: ฿1,800/pers
+- Horaire: 11h30-19h00
+- Ambiance: Festive avec musique et bar
+- Inclus: Kayak, paddle, masque, repas, photos
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/71115
+
+#### Long Tail Privé
+- Prix: ฿4,200 (jusqu'à 3 pers) pour 6h
+- Itinéraire flexible
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/71403
+
+### PLONGÉE À PHI PHI
+
+#### Baptême de Plongée
+- Prix: ฿3,400 + ฿600 frais marine
+- 2 plongées de 50min, équipement complet
+- Instructeurs francophones
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/71911
+
+#### Fun Dive (Certifiés)
+- Prix: ฿2,700 + ฿600 frais marine
+- 2 plongées, équipement inclus
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/71667
+
+#### Open Water PADI
+- Prix: ฿12,900 + ฿800 frais
+- 3-4 jours, certification internationale
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/71669
+
+### EXCURSIONS DEPUIS KRABI / AO NANG
+
+#### Hong Island Sunset & BBQ 🔥 ⭐ BEST-SELLER
+- Prix: ฿2,500/pers
+- Horaire: 11h00-20h00
+- Sites: Koh Hong, Lagon, viewpoint 420 marches, planctons bioluminescents!
+- Inclus: Transfert, déjeuner, BBQ sunset, masque, parc national
+- Max 10-12 personnes
+
+#### 4 Islands Sunset & BBQ 🔥
+- Prix: ฿2,500/pers
+- Horaire: 11h30-20h00
+- Sites: Secret Beach, Tup Island, Chicken Island, Poda Island
+- Planctons bioluminescents!
+
+#### James Bond Island
+- Prix: ฿2,500/pers
+- Horaire: 8h00-18h30
+- Sites: Canoë mangroves, James Bond Island, village flottant
+
+#### Sanctuaire Éléphants + Cascades Bencha 🐘
+- Prix: ฿3,000/pers
+- Horaire: 7h00-15h00
+- 3h avec éléphants + 7 niveaux de cascades
+
+### EXCURSIONS DEPUIS PHUKET
+
+#### Koh Phi Phi Autrement (Speedboat)
+- Prix: ฿3,500/pers
+- Horaire: 5h15-15h30
+- Maya Bay sunrise, max 15 personnes
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/84448
+
+#### Similan Islands
+- Prix: ฿2,000/pers
+- Meilleur snorkeling de Thaïlande
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/84442
+
+#### James Bond Island
+- Prix: ฿1,700/pers
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/84187
+
+### EXCURSIONS BANGKOK
+
+#### Temples (Grand Palace, Wat Pho, Wat Arun)
+- Guide anglais: https://booking.myrezapp.com/fr/online/booking/step1/16686/86554
+- Guide français: https://booking.myrezapp.com/fr/online/booking/step1/16686/86582
+
+#### Ayutthaya
+- Guide anglais: https://booking.myrezapp.com/fr/online/booking/step1/16686/86578
+- Guide français: https://booking.myrezapp.com/fr/online/booking/step1/16686/86588
+
+#### Marchés flottants
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/86552
+
+### EXCURSIONS CHIANG MAI
+
+#### Éléphants Chiang Mai
+- Prix: ฿1,500/pers
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/86591
+
+#### Chiang Rai (Temples Blanc/Bleu)
+- Prix: ฿1,900/pers
+- Lien: https://booking.myrezapp.com/fr/online/booking/step1/16686/86592
+
+### FERRIES & TRANSFERTS
+- Phi Phi → Phuket: ฿1,100 - https://booking.myrezapp.com/fr/online/booking/step1/16686/71407
+- Phi Phi → Krabi: ฿1,100 - https://booking.myrezapp.com/fr/online/booking/step1/16686/71409
+
+### KOH LANTA
+- Îles Trang & Koh Kradan (#1 monde 2023!): ฿7,500-13,000 selon groupe
+- Koh Rok: Snorkeling exceptionnel
 """
 
 # ============================================
-# Modèles Pydantic
+# Mémoire des conversations
 # ============================================
-class Message(BaseModel):
-    role: str
-    content: str
+# Structure: {phone_hash: {messages: [], client_info: {}, last_interaction: timestamp}}
+conversations_memory: Dict[str, dict] = {}
+MAX_MEMORY_MESSAGES = 20  # Garder les 20 derniers messages
 
-class ChatRequest(BaseModel):
-    message: str
-    conversation_history: Optional[List[Message]] = []
-    stream: Optional[bool] = False
-    language: Optional[str] = "fr"
+def get_phone_hash(phone: str) -> str:
+    """Hash du numéro pour la confidentialité"""
+    return hashlib.md5(phone.encode()).hexdigest()[:12]
 
-class ChatResponse(BaseModel):
-    response: str
-    model: str = MODEL
+def get_conversation(phone: str) -> dict:
+    """Récupère ou crée une conversation"""
+    phone_hash = get_phone_hash(phone)
+    if phone_hash not in conversations_memory:
+        conversations_memory[phone_hash] = {
+            "phone": phone,
+            "messages": [],
+            "client_info": {},
+            "first_contact": datetime.now().isoformat(),
+            "last_interaction": datetime.now().isoformat(),
+            "interests": [],
+            "bookings": []
+        }
+    return conversations_memory[phone_hash]
 
-# ============================================
-# Fonctions utilitaires
-# ============================================
-def call_nvidia_api(messages: list, stream: bool = False):
-    """Appelle l'API NVIDIA avec Kimi K2.5"""
+def add_message_to_memory(phone: str, role: str, content: str):
+    """Ajoute un message à la mémoire"""
+    conv = get_conversation(phone)
+    conv["messages"].append({
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now().isoformat()
+    })
+    # Garder seulement les derniers messages
+    if len(conv["messages"]) > MAX_MEMORY_MESSAGES:
+        conv["messages"] = conv["messages"][-MAX_MEMORY_MESSAGES:]
+    conv["last_interaction"] = datetime.now().isoformat()
+
+def update_client_info(phone: str, info: dict):
+    """Met à jour les infos client"""
+    conv = get_conversation(phone)
+    conv["client_info"].update(info)
+
+def get_conversation_context(phone: str) -> str:
+    """Génère le contexte de conversation pour l'IA"""
+    conv = get_conversation(phone)
+    context = ""
     
+    if conv["client_info"]:
+        context += f"\n## INFOS CLIENT CONNUES:\n"
+        for key, value in conv["client_info"].items():
+            context += f"- {key}: {value}\n"
+    
+    if conv["interests"]:
+        context += f"\n## INTÉRÊTS: {', '.join(conv['interests'])}\n"
+    
+    if conv["messages"]:
+        context += f"\n## HISTORIQUE CONVERSATION (derniers messages):\n"
+        for msg in conv["messages"][-10:]:  # 10 derniers pour le contexte
+            role_name = "Client" if msg["role"] == "user" else "Olivia"
+            context += f"{role_name}: {msg['content'][:200]}...\n" if len(msg['content']) > 200 else f"{role_name}: {msg['content']}\n"
+    
+    return context
+
+# ============================================
+# Système de prompts
+# ============================================
+SYSTEM_PROMPT = f"""Tu es Olivia, l'assistante virtuelle de Phi Phi Paradise Travel.
+
+## TA PERSONNALITÉ
+- Chaleureuse, accueillante, professionnelle
+- Tu parles français et anglais (adapte-toi à la langue du client)
+- Experte de la Thaïlande
+- Tu veux aider, pas juste vendre
+
+## TES CAPACITÉS
+- Tu as accès à toute la base de connaissances de l'agence
+- Tu connais les prix, horaires, et liens de réservation
+- Tu peux recommander des excursions selon les préférences
+- Tu mémorises les conversations avec chaque client
+
+## COMMENT RÉPONDRE
+1. Réponds toujours de manière concise (WhatsApp = messages courts)
+2. Utilise des emojis avec modération (🌴🌊🐘⭐)
+3. Donne les PRIX en Baht (฿)
+4. Donne les LIENS de réservation MyRezz quand pertinent
+5. Si le client veut réserver, donne le lien direct
+6. Pour questions complexes, propose d'appeler ou WhatsApp +66 99 11 58 304
+
+## COLLECTE D'INFOS (subtile)
+Essaie de savoir naturellement:
+- Prénom du client
+- Dates de voyage
+- Où ils logent (Phi Phi, Krabi, Phuket?)
+- Intérêts (plongée, fête, famille, nature?)
+- Nombre de personnes
+
+## BASE DE CONNAISSANCES
+{KNOWLEDGE_BASE}
+
+## RÈGLES IMPORTANTES
+- Ne jamais inventer de prix ou d'infos
+- Toujours proposer le lien de réservation quand tu recommandes une excursion
+- Si tu ne sais pas, dis-le et propose de contacter Jiji
+- Signe tes messages "Olivia - Phi Phi Paradise Travel" (seulement à la fin de conversation)
+"""
+
+# ============================================
+# Fonctions IA
+# ============================================
+def call_nvidia_api(messages: list, stream: bool = True):
+    """Appelle l'API NVIDIA"""
     if not NVIDIA_API_KEY:
         raise HTTPException(status_code=500, detail="NVIDIA_API_KEY non configurée")
     
@@ -126,7 +331,7 @@ def call_nvidia_api(messages: list, stream: bool = False):
     payload = {
         "model": MODEL,
         "messages": messages,
-        "max_tokens": 4096,
+        "max_tokens": 2048,
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": stream,
@@ -142,17 +347,13 @@ def call_nvidia_api(messages: list, stream: bool = False):
     )
     
     if response.status_code != 200:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail=f"Erreur NVIDIA API: {response.text}"
-        )
+        raise HTTPException(status_code=response.status_code, detail=f"Erreur API: {response.text}")
     
     return response
 
 def parse_sse_response(response):
-    """Parse la réponse SSE de NVIDIA"""
+    """Parse la réponse SSE"""
     full_content = ""
-    
     for line in response.iter_lines():
         if line:
             line = line.decode("utf-8")
@@ -169,58 +370,140 @@ def parse_sse_response(response):
                             full_content += content
                 except json.JSONDecodeError:
                     continue
-    
     return full_content
 
+def extract_client_info(message: str, response: str) -> dict:
+    """Extrait les infos client des messages"""
+    info = {}
+    
+    # Patterns pour extraire des infos
+    patterns = {
+        "prenom": r"(?:je m'appelle|my name is|moi c'est|I'm)\s+([A-Z][a-zéèê]+)",
+        "personnes": r"(\d+)\s*(?:personnes?|pers|people|pax|adultes?)",
+        "date": r"(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?)",
+        "hotel": r"(?:à l'hôtel|at|staying at|logé à)\s+([A-Za-z\s]+)",
+    }
+    
+    combined = message + " " + response
+    for key, pattern in patterns.items():
+        match = re.search(pattern, combined, re.IGNORECASE)
+        if match:
+            info[key] = match.group(1)
+    
+    return info
+
+# ============================================
+# WhatsApp WAHA
+# ============================================
 async def send_whatsapp_message(to: str, message: str):
-    """Envoie un message WhatsApp via WAHA"""
+    """Envoie un message WhatsApp"""
     if not WAHA_API_KEY:
-        print("WAHA_API_KEY non configurée")
+        print("WAHA non configuré")
         return False
     
     url = f"{WAHA_API_URL}/api/sendText"
-    headers = {
-        "X-Api-Key": WAHA_API_KEY,
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "session": WAHA_SESSION,
-        "chatId": to,
-        "text": message
-    }
+    headers = {"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"}
+    payload = {"session": WAHA_SESSION, "chatId": to, "text": message}
     
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, json=payload, timeout=30)
-            print(f"WAHA response: {response.status_code} - {response.text}")
-            return response.status_code == 200 or response.status_code == 201
+            return response.status_code in [200, 201]
     except Exception as e:
-        print(f"Erreur envoi WhatsApp: {e}")
+        print(f"Erreur WhatsApp: {e}")
+        return False
+
+async def send_email_recap(phone: str):
+    """Envoie un email récap de la conversation"""
+    if not SMTP_USER or not SMTP_PASS:
+        print("SMTP non configuré")
+        return False
+    
+    conv = get_conversation(phone)
+    if not conv["messages"]:
+        return False
+    
+    # Construire le récap
+    subject = f"[Olivia] Conversation WhatsApp - {conv['client_info'].get('prenom', phone)}"
+    
+    body = f"""
+Récapitulatif conversation WhatsApp
+===================================
+
+📱 Numéro: {phone}
+📅 Premier contact: {conv['first_contact']}
+📅 Dernière interaction: {conv['last_interaction']}
+
+👤 Infos client:
+{json.dumps(conv['client_info'], indent=2, ensure_ascii=False) if conv['client_info'] else 'Aucune info collectée'}
+
+💬 Conversation:
+"""
+    for msg in conv["messages"]:
+        role = "👤 Client" if msg["role"] == "user" else "🤖 Olivia"
+        body += f"\n{role} ({msg['timestamp'][:16]}):\n{msg['content']}\n"
+    
+    # Envoyer par email (simple SMTP)
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_USER
+        msg['To'] = RECAP_EMAIL
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
+        
+        print(f"Email récap envoyé pour {phone}")
+        return True
+    except Exception as e:
+        print(f"Erreur email: {e}")
         return False
 
 async def process_whatsapp_message(from_number: str, message_text: str):
-    """Traite un message WhatsApp et répond"""
+    """Traite un message WhatsApp avec mémoire"""
     try:
-        # Appeler l'API NVIDIA
+        # Ajouter le message à la mémoire
+        add_message_to_memory(from_number, "user", message_text)
+        
+        # Construire le contexte avec mémoire
+        conversation_context = get_conversation_context(from_number)
+        
+        full_system = SYSTEM_PROMPT + f"\n\n## CONTEXTE CONVERSATION ACTUELLE:\n{conversation_context}"
+        
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": full_system},
             {"role": "user", "content": message_text}
         ]
         
+        # Appeler l'IA
         response = call_nvidia_api(messages, stream=True)
         ai_response = parse_sse_response(response)
         
-        # Envoyer la réponse via WhatsApp
+        # Sauvegarder la réponse
+        add_message_to_memory(from_number, "assistant", ai_response)
+        
+        # Extraire et sauvegarder les infos client
+        client_info = extract_client_info(message_text, ai_response)
+        if client_info:
+            update_client_info(from_number, client_info)
+        
+        # Envoyer la réponse WhatsApp
         await send_whatsapp_message(from_number, ai_response)
         
-        print(f"Message traité: {from_number} -> {message_text[:50]}...")
+        print(f"✅ Message traité: {from_number[:20]}...")
         
     except Exception as e:
-        print(f"Erreur traitement message: {e}")
-        # Envoyer un message d'erreur
+        print(f"❌ Erreur: {e}")
         await send_whatsapp_message(
-            from_number, 
-            "Désolée, je rencontre un problème technique. Contactez-nous directement au +66 99 11 58 304. - Odile"
+            from_number,
+            "Désolée, petit souci technique! Contactez-nous au +66 99 11 58 304 🙏"
         )
 
 # ============================================
@@ -228,122 +511,127 @@ async def process_whatsapp_message(from_number: str, message_text: str):
 # ============================================
 @app.get("/")
 async def root():
-    """Page d'accueil"""
     return {
-        "name": "Odile - Phi Phi Paradise Travel",
+        "name": "Olivia - Phi Phi Paradise Travel",
+        "version": "2.0",
         "status": "online",
         "model": MODEL,
+        "features": ["memory", "knowledge_base", "whatsapp", "email_recap"],
         "whatsapp": "connected" if WAHA_API_KEY else "not configured",
-        "endpoints": {
-            "chat": "POST /chat",
-            "health": "GET /health",
-            "info": "GET /info",
-            "webhook": "POST /webhook/waha"
-        }
+        "active_conversations": len(conversations_memory)
     }
 
 @app.get("/health")
 async def health():
-    """Health check pour Railway"""
-    return {"status": "healthy", "model": MODEL}
+    return {"status": "healthy", "model": MODEL, "conversations": len(conversations_memory)}
 
 @app.get("/info")
 async def info():
-    """Informations sur l'agence"""
     return {
         "agency": "Phi Phi Paradise Travel",
-        "assistant": "Odile",
-        "location": "Koh Phi Phi, Thailand",
-        "license": "TAT 33/10549",
+        "assistant": "Olivia",
+        "version": "2.0",
         "contact": {
             "whatsapp_th": "+66 99 11 58 304",
             "whatsapp_fr": "+33 7 85 65 40 82",
             "website": "https://phiphiparadisetravel.com"
-        },
-        "languages": ["Français", "English"],
-        "destinations": ["Koh Phi Phi", "Krabi", "Phuket", "Koh Lanta", "Bangkok"]
+        }
     }
+
+class ChatRequest(BaseModel):
+    message: str
+    phone: Optional[str] = "web_user"
+
+class ChatResponse(BaseModel):
+    response: str
+    model: str = MODEL
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Endpoint principal de chat avec Odile"""
+    """Chat avec mémoire"""
+    add_message_to_memory(request.phone, "user", request.message)
+    conversation_context = get_conversation_context(request.phone)
     
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    full_system = SYSTEM_PROMPT + f"\n\n## CONTEXTE:\n{conversation_context}"
     
-    for msg in request.conversation_history:
-        messages.append({"role": msg.role, "content": msg.content})
-    
-    messages.append({"role": "user", "content": request.message})
+    messages = [
+        {"role": "system", "content": full_system},
+        {"role": "user", "content": request.message}
+    ]
     
     response = call_nvidia_api(messages, stream=True)
-    content = parse_sse_response(response)
+    ai_response = parse_sse_response(response)
     
-    return ChatResponse(response=content, model=MODEL)
+    add_message_to_memory(request.phone, "assistant", ai_response)
+    
+    return ChatResponse(response=ai_response, model=MODEL)
 
 @app.post("/webhook/waha")
 async def waha_webhook(request: Request, background_tasks: BackgroundTasks):
-    """
-    Webhook pour WAHA (WhatsApp HTTP API)
-    Reçoit les messages et répond automatiquement
-    """
+    """Webhook WAHA"""
     try:
         body = await request.json()
-        print(f"WAHA Webhook received: {json.dumps(body)[:500]}")
-        
         event = body.get("event")
         
-        # Traiter uniquement les messages entrants
         if event == "message":
             payload = body.get("payload", {})
             
-            # Ignorer les messages sortants (de nous)
             if payload.get("fromMe", False):
-                return {"status": "ignored", "reason": "outgoing message"}
+                return {"status": "ignored", "reason": "outgoing"}
             
-            # Extraire les infos du message
             from_number = payload.get("from", "")
             message_body = payload.get("body", "")
             message_type = payload.get("type", "")
             
-            # Traiter uniquement les messages texte
             if message_type == "chat" and message_body:
-                # Traiter en arrière-plan pour répondre rapidement au webhook
-                background_tasks.add_task(
-                    process_whatsapp_message,
-                    from_number,
-                    message_body
-                )
-                return {"status": "processing", "from": from_number}
-            
-            return {"status": "ignored", "reason": f"unsupported type: {message_type}"}
+                background_tasks.add_task(process_whatsapp_message, from_number, message_body)
+                return {"status": "processing"}
         
-        return {"status": "ignored", "reason": f"unsupported event: {event}"}
-        
+        return {"status": "ignored"}
     except Exception as e:
-        print(f"Webhook error: {e}")
         return {"status": "error", "detail": str(e)}
+
+@app.get("/conversations")
+async def list_conversations():
+    """Liste les conversations actives"""
+    convs = []
+    for phone_hash, conv in conversations_memory.items():
+        convs.append({
+            "id": phone_hash,
+            "client_info": conv["client_info"],
+            "message_count": len(conv["messages"]),
+            "last_interaction": conv["last_interaction"]
+        })
+    return {"conversations": convs}
+
+@app.get("/conversations/{phone_hash}")
+async def get_conversation_detail(phone_hash: str):
+    """Détail d'une conversation"""
+    if phone_hash in conversations_memory:
+        return conversations_memory[phone_hash]
+    raise HTTPException(status_code=404, detail="Conversation non trouvée")
+
+@app.post("/conversations/{phone_hash}/email-recap")
+async def send_conversation_recap(phone_hash: str, background_tasks: BackgroundTasks):
+    """Envoie un email récap"""
+    if phone_hash not in conversations_memory:
+        raise HTTPException(status_code=404, detail="Conversation non trouvée")
+    
+    phone = conversations_memory[phone_hash]["phone"]
+    background_tasks.add_task(send_email_recap, phone)
+    return {"status": "sending", "to": RECAP_EMAIL}
 
 @app.get("/test")
 async def test():
-    """Test rapide de l'API"""
-    try:
-        chat_request = ChatRequest(
-            message="Bonjour! Dis juste OK",
-            stream=False
-        )
-        response = await chat(chat_request)
-        return {
-            "status": "success",
-            "nvidia_api": "working",
-            "waha_configured": bool(WAHA_API_KEY),
-            "response_preview": response.response[:200] if response.response else None
-        }
-    except Exception as e:
-        return {"status": "error", "detail": str(e)}
+    """Test complet"""
+    return {
+        "nvidia_api": "configured" if NVIDIA_API_KEY else "missing",
+        "waha": "configured" if WAHA_API_KEY else "missing",
+        "smtp": "configured" if SMTP_USER else "missing",
+        "model": MODEL,
+        "knowledge_base_size": len(KNOWLEDGE_BASE)
+    }
 
-# ============================================
-# Point d'entrée
-# ============================================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)

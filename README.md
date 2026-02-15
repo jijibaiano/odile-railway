@@ -1,94 +1,74 @@
-# 🌴 Odile - Phi Phi Paradise Travel Bot
+# 🌴 Olivia 2.0 - Phi Phi Paradise Travel Assistant
 
-Assistant voyage intelligent propulsé par **NVIDIA Kimi K2.5**.
+Assistant voyage intelligent avec mémoire, base de connaissances, et intégrations complètes.
 
-## Déploiement sur Railway
+## Fonctionnalités
 
-### 1. Fork/Clone ce repo
+| Feature | Description |
+|---------|-------------|
+| 🧠 **Mémoire** | Conversations séparées par client |
+| 📚 **Knowledge Base** | Toutes les excursions, prix, liens MyRezz |
+| 📱 **WhatsApp** | Réponses automatiques via WAHA |
+| 📧 **Email Recap** | Résumé automatique par client |
+| 🔗 **Liens Réservation** | MyRezz intégré |
+
+## Variables d'environnement
 
 ```bash
-git clone <ton-repo>
-cd odile-railway
+# NVIDIA API (obligatoire)
+NVIDIA_API_KEY=nvapi-xxx
+MODEL=moonshotai/kimi-k2.5  # optionnel
+
+# WAHA WhatsApp
+WAHA_API_URL=https://xxx.railway.app
+WAHA_API_KEY=wak_xxx
+WAHA_SESSION=default
+
+# Email Recap (optionnel)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=phiphiparadis@gmail.com
+SMTP_PASS=xxx
+RECAP_EMAIL=phiphiparadis@gmail.com
 ```
 
-### 2. Crée un projet sur Railway
+## Endpoints API
 
-1. Va sur [railway.app](https://railway.app)
-2. "New Project" → "Deploy from GitHub repo"
-3. Sélectionne ce repo
-
-### 3. Configure les variables d'environnement
-
-Dans Railway → ton projet → Variables :
-
-```
-NVIDIA_API_KEY=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
-```
-
-### 4. Déploie !
-
-Railway déploie automatiquement à chaque push.
-
----
-
-## API Endpoints
-
-| Endpoint | Méthode | Description |
-|----------|---------|-------------|
-| `/` | GET | Page d'accueil |
+| Route | Méthode | Description |
+|-------|---------|-------------|
+| `/` | GET | Status & infos |
 | `/health` | GET | Health check |
-| `/info` | GET | Infos agence |
-| `/chat` | POST | Chat avec Odile |
-| `/test` | GET | Test rapide |
-| `/webhook/whatsapp` | POST | Webhook WhatsApp |
+| `/chat` | POST | Chat avec Olivia |
+| `/webhook/waha` | POST | Webhook WhatsApp |
+| `/conversations` | GET | Liste conversations |
+| `/conversations/{id}` | GET | Détail conversation |
+| `/conversations/{id}/email-recap` | POST | Envoyer récap email |
 
-### Exemple d'utilisation
+## Exemple Chat
 
 ```bash
-curl -X POST https://ton-app.railway.app/chat \
+curl -X POST https://xxx.railway.app/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Bonjour! Quelles excursions proposez-vous?"}'
+  -d '{"message": "Quelles excursions depuis Krabi?", "phone": "+33612345678"}'
 ```
 
-### Réponse
+## Base de Connaissances
 
-```json
-{
-  "response": "Bonjour ! 🌴 Bienvenue chez Phi Phi Paradise Travel...",
-  "model": "moonshotai/kimi-k2.5"
-}
-```
+Olivia connaît:
+- ✅ Toutes les excursions (Phi Phi, Krabi, Phuket, Bangkok, Chiang Mai)
+- ✅ Prix en Baht
+- ✅ Horaires
+- ✅ Liens de réservation MyRezz
+- ✅ Politiques (pas d'acompte, réductions enfants)
+- ✅ Contacts
+
+## Mémoire
+
+Chaque client a sa propre conversation:
+- Historique des 20 derniers messages
+- Infos collectées (prénom, dates, hôtel, nombre de personnes)
+- Intérêts détectés
 
 ---
-
-## Intégration WhatsApp
-
-Pour connecter à WhatsApp (via WAHA ou autre), configure le webhook :
-
-```
-https://ton-app.railway.app/webhook/whatsapp
-```
-
----
-
-## Structure
-
-```
-odile-railway/
-├── main.py           # Application FastAPI
-├── requirements.txt  # Dépendances Python
-├── Procfile          # Commande de démarrage
-├── railway.json      # Config Railway
-├── .env.example      # Variables d'env (exemple)
-└── README.md         # Ce fichier
-```
-
----
-
-## Contact
-
-- **WhatsApp TH:** +66 99 11 58 304
-- **WhatsApp FR:** +33 7 85 65 40 82
-- **Site:** https://phiphiparadisetravel.com
 
 🌴 *Phi Phi Paradise Travel - Licence TAT 33/10549*
